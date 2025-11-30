@@ -1,0 +1,5 @@
+- Created a new browser-only React + TypeScript front end in `web/` using Vite. Added project configs (`package.json`, `tsconfig*.json`, `vite.config.ts`, `index.html`, entry files).
+- Ported core save parsing/writing for general player data to TS (`src/lib/saveParser.ts`, `src/lib/types.ts`): detects 3DS vs Switch saves, pulls slot offsets, parses/writes name, play time, funds, HR, HR points, and village/academy points, preserves headers when reassembling.
+- Added parsing/writing scaffolding for item box bit-packing, hunter/palico equipment boxes, palicoes, guild card + arena log, shoutouts, and monster logs with size validation in TS.
+- Built a styled UI (`src/App.tsx`, `src/App.css`, `src/index.css`) that lets you load a save locally, select an occupied slot, edit core fields with name byte-length guard and playtime formatter, and download the updated save—no server involved. New data-block summary section shows counts/byte sizes and preserves the newly ported blocks on download (currently read-only).
+- Still to do: make the new sections editable (item box, equipment, palicoes, guild card, shoutouts, monster logs) to reach feature parity with WinForms.

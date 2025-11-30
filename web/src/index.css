@@ -1,0 +1,45 @@
+:root {
+  font-family: "Trebuchet MS", "Gill Sans", "Segoe UI", sans-serif;
+  line-height: 1.4;
+  font-weight: 400;
+  color: #e5ecff;
+  background-color: #0b1020;
+  --bg: radial-gradient(circle at 20% 20%, rgba(34, 211, 238, 0.16), transparent 35%),
+    radial-gradient(circle at 80% 10%, rgba(94, 234, 212, 0.12), transparent 30%),
+    linear-gradient(135deg, #0b1020 0%, #0f172a 60%, #0b1020 100%);
+  --panel: rgba(17, 24, 39, 0.65);
+  --panel-strong: rgba(23, 32, 50, 0.95);
+  --text: #e5ecff;
+  --muted: #9db2d3;
+  --border: rgba(255, 255, 255, 0.08);
+  --accent: #0ea5e9;
+  --accent-strong: #06b6d4;
+  --danger: #f87171;
+  --shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+  margin: 0;
+}
+
+button,
+input {
+  font-family: inherit;
+}
