@@ -46,6 +46,7 @@ import { ITEMS } from "./lib/data/items";
 import "./App.css";
 
 type FieldKey = keyof PlayerCore;
+type TabKey = "edit" | "items" | "hunterEquip" | "palicoEquip" | "progress";
 
 const FIELD_META: Array<{
   key: FieldKey;
@@ -132,9 +133,18 @@ const emptyBlockErrors: Record<HexBlockKey, string | null> = {
   monsterSizes: null
 };
 
+const TAB_CONFIG: Array<{ key: TabKey; label: string; helper: string }> = [
+  { key: "edit", label: "Edit value", helper: "Hunter core stats and name" },
+  { key: "items", label: "Items & inventory", helper: "Item box totals and slots" },
+  { key: "hunterEquip", label: "Hunter equipment box", helper: "Full hunter gear hex block" },
+  { key: "palicoEquip", label: "Palico equipment & pals", helper: "Palico gear and roster hex blocks" },
+  { key: "progress", label: "Guild card & logs", helper: "Arena log, shoutouts, monster data" }
+];
+
 function App() {
   const [loadedSave, setLoadedSave] = useState<LoadedSave | null>(null);
   const [currentSlot, setCurrentSlot] = useState<number>(1);
+  const [activeTab, setActiveTab] = useState<TabKey>("edit");
   const [form, setForm] = useState<PlayerCore | null>(null);
   const [items, setItems] = useState<ItemSlot[] | null>(null);
   const [equipment, setEquipment] = useState<EquipmentBoxes | null>(null);
@@ -235,6 +245,7 @@ function App() {
       setGuildCard(parseGuildCard(detected.payload, slot));
       setShoutouts(parseShoutouts(detected.payload, slot));
       setMonsterLogs(parseMonsterLogs(detected.payload, slot));
+      setActiveTab("edit");
       setStatus(
         `Loaded ${detected.kind.toUpperCase()} save • Slot ${slot} ready`
       );
@@ -385,6 +396,7 @@ function App() {
     setError(null);
     setStatus(initialMessage);
     setCurrentSlot(1);
+    setActiveTab("edit");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -564,6 +576,442 @@ function App() {
       return acc;
     }, 0) ?? 0;
 
+  const renderEditTab = () => (
+    <div className="tab-panel" data-tab="edit">
+      <div className="tab-panel-head">
+        <div>
+          <p className="label">Hunter values</p>
+          <p className="meta">Rename, adjust funds, HR, and play time.</p>
+        </div>
+        <span className="pill">Slot {currentSlot}</span>
+      </div>
+      {form ? (
+        <div className="form-grid">
+          {FIELD_META.map((field) => (
+            <label key={field.key} className="field">
+              <div className="field-top">
+                <span>{field.label}</span>
+                {field.key === "playTime" && (
+                  <span className="meta">{decodedPlayTime}</span>
+                )}
+              </div>
+              <input
+                type={field.key === "name" ? "text" : "number"}
+                min={field.min}
+                max={field.max}
+                value={
+                  field.key === "name"
+                    ? form.name
+                    : (form[field.key] as number)
+                }
+                onChange={(e) => updateField(field.key, e.target.value)}
+                aria-label={field.label}
+              />
+              <div className="field-helper">
+                <span>{field.helper ?? " "}</span>
+                {field.key === "name" && (
+                  <span
+                    className={isNameTooLong ? "meta meta-warn" : "meta"}
+                    title="UTF-8 bytes used"
+                  >
+                    {nameBytes}/32 bytes
+                  </span>
+                )}
+              </div>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="hint">Load a save slot to edit values.</p>
+      )}
+    </div>
+  );
+
+  const renderItemsTab = () => (
+    <div className="tab-panel" data-tab="items">
+      {loadedSave && items ? (
+        <div className="subcard">
+          <div className="subcard-header">
+            <div>
+              <p className="label">Item box</p>
+              <p className="meta">
+                {filledItemCount}/{ITEM_SLOT_COUNT} slots with items. IDs up to {(1 << ITEM_ID_BITS) - 1},
+                counts up to {MAX_ITEM_STACK}.
+              </p>
+            </div>
+            <span className="pill">{ITEM_SLOT_COUNT} slots</span>
+          </div>
+          <div className="item-form">
+            <label className="field small full">
+              <div className="field-top">
+                <span>Search items</span>
+                <span className="meta">Filter both lists by name or ID. Full catalog is still shown.</span>
+              </div>
+              <input
+                type="text"
+                value={itemSearch}
+                onChange={(e) => setItemSearch(e.target.value)}
+                placeholder="Potion, Powercharm, 99..."
+              />
+            </label>
+            <div className="item-lists">
+              <div className="item-list">
+                <div className="list-head">
+                  <div>
+                    <p className="label">Item catalog</p>
+                    <p className="meta">All items with quick +/- controls.</p>
+                  </div>
+                  <span className="pill">{filteredItems.length} items</span>
+                </div>
+                <div className="list-body">
+                  {filteredItems.map((item) => (
+                    <div className="item-row" key={item.id}>
+                      <div>
+                        <p className="label small">{item.name}</p>
+                        <p className="meta">ID {item.id}</p>
+                      </div>
+                      <div className="row-actions">
+                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
+                          -
+                        </button>
+                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
+                          -10
+                        </button>
+                        <span className="pill count">{itemTotals.get(item.id) ?? 0}</span>
+                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
+                          +
+                        </button>
+                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 10)}>
+                          +10
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="item-list">
+                <div className="list-head">
+                  <div>
+                    <p className="label">Current inventory</p>
+                    <p className="meta">Only items you currently hold.</p>
+                  </div>
+                  <span className="pill">{itemSummary.length} types</span>
+                </div>
+                <div className="list-body">
+                  {itemSummary.length === 0 && <span className="hint">No items yet.</span>}
+                  {itemSummary.map((item) => (
+                    <div className="item-row" key={item.id}>
+                      <div>
+                        <p className="label small">{item.name}</p>
+                        <p className="meta">ID {item.id}</p>
+                      </div>
+                      <div className="row-actions">
+                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
+                          -
+                        </button>
+                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
+                          -10
+                        </button>
+                        <span className="pill count">{item.count}</span>
+                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
+                          +
+                        </button>
+                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 10)}>
+                          +10
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <details className="manual-editor">
+              <summary>Advanced: edit a specific slot</summary>
+              <div className="inline-fields">
+                <label className="field small">
+                  <div className="field-top">
+                    <span>Slot #</span>
+                  </div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={ITEM_SLOT_COUNT}
+                    value={itemSlotInput}
+                    onChange={(e) => setItemSlotFromValue(Number(e.target.value))}
+                  />
+                  <div className="field-helper">
+                    <span>1-{ITEM_SLOT_COUNT}</span>
+                  </div>
+                </label>
+                <label className="field small">
+                  <div className="field-top">
+                    <span>Item ID</span>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={(1 << ITEM_ID_BITS) - 1}
+                    value={itemIdInput}
+                    onChange={(e) => setItemIdInput(Number(e.target.value))}
+                  />
+                  <div className="field-helper">
+                    <span>{getItemName(itemIdInput)}</span>
+                  </div>
+                </label>
+                <label className="field small">
+                  <div className="field-top">
+                    <span>Count</span>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={(1 << ITEM_COUNT_BITS) - 1}
+                    value={itemCountInput}
+                    onChange={(e) => setItemCountInput(Number(e.target.value))}
+                  />
+                  <div className="field-helper">
+                    <span>0-{(1 << ITEM_COUNT_BITS) - 1}</span>
+                  </div>
+                </label>
+              </div>
+              <div className="actions wrap">
+                <button className="primary" type="button" onClick={applyItemSlot}>
+                  Save slot
+                </button>
+                <button className="ghost" type="button" onClick={() => setItemSlotFromValue(itemSlotInput)}>
+                  Reload slot
+                </button>
+                <button className="ghost" type="button" onClick={clearItemSlot}>
+                  Clear slot
+                </button>
+              </div>
+            </details>
+          </div>
+        </div>
+      ) : (
+        <p className="hint">Load a save to edit item box and inventory.</p>
+      )}
+    </div>
+  );
+
+  const renderHunterEquipTab = () => (
+    <div className="tab-panel" data-tab="hunterEquip">
+      {equipment ? (
+        <div className="subcard">
+          <div className="subcard-header">
+            <div>
+              <p className="label">Hunter equipment box</p>
+              <p className="meta">Paste an eqpboXX export or drop the raw block. Length must stay exact.</p>
+            </div>
+            <span className="pill">{EQUIPMENT_BOX_BYTES.toLocaleString()} bytes</span>
+          </div>
+          {renderHexEditor(
+            "hunterEquip",
+            "Hunter equipment box",
+            EQUIPMENT_BOX_BYTES,
+            (bytes) =>
+              setEquipment((prev) =>
+                prev
+                  ? { ...prev, hunter: bytes }
+                  : { hunter: bytes, palico: new Uint8Array(PALICO_EQUIPMENT_BYTES) }
+              ),
+            "72,000 bytes. Import an eqpboXX export or paste hex."
+          )}
+        </div>
+      ) : (
+        <p className="hint">Load a save to edit hunter equipment.</p>
+      )}
+    </div>
+  );
+
+  const renderPalicoEquipTab = () => (
+    <div className="tab-panel" data-tab="palicoEquip">
+      {equipment && palicoes ? (
+        <div className="block-grid">
+          <div className="subcard">
+            <div className="subcard-header">
+              <div>
+                <p className="label">Palico equipment box</p>
+                <p className="meta">Keep the byte count exact; drop the raw block or paste hex.</p>
+              </div>
+              <span className="pill">{PALICO_EQUIPMENT_BYTES.toLocaleString()} bytes</span>
+            </div>
+            {renderHexEditor(
+              "palicoEquip",
+              "Palico equipment box",
+              PALICO_EQUIPMENT_BYTES,
+              (bytes) =>
+                setEquipment((prev) =>
+                  prev
+                    ? { ...prev, palico: bytes }
+                    : { palico: bytes, hunter: new Uint8Array(EQUIPMENT_BOX_BYTES) }
+                ),
+              "36,000 bytes."
+            )}
+          </div>
+          <div className="subcard">
+            <div className="subcard-header">
+              <div>
+                <p className="label">Palicoes</p>
+                <p className="meta">{palicoCount} populated slots. Block size {PALICO_BYTES} bytes.</p>
+              </div>
+              <span className="pill">Roster hex</span>
+            </div>
+            {renderHexEditor(
+              "palicoes",
+              "Palicoes",
+              PALICO_BYTES,
+              (bytes) => setPalicoes((prev) => (prev ? { ...prev, raw: bytes } : { raw: bytes })),
+              `${PALICO_BYTES} bytes.`
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="hint">Load a save to edit palico gear and roster.</p>
+      )}
+    </div>
+  );
+
+  const renderProgressTab = () => (
+    <div className="tab-panel" data-tab="progress">
+      {loadedSave && guildCard && shoutouts && monsterLogs ? (
+        <div className="block-grid">
+          <div className="subcard">
+            <div className="subcard-header">
+              <div>
+                <p className="label">Guild card</p>
+                <p className="meta">Arena log included—keep byte counts matched.</p>
+              </div>
+              <span className="pill">{(guildCard.card.length + guildCard.arenaLog.length).toLocaleString()} bytes</span>
+            </div>
+            {renderHexEditor(
+              "guildCard",
+              "Guild card block",
+              GUILD_CARD_BYTES,
+              (bytes) =>
+                setGuildCard((prev) =>
+                  prev
+                    ? { ...prev, card: bytes }
+                    : { card: bytes, arenaLog: new Uint8Array(ARENA_LOG_BYTES) }
+                ),
+              `${GUILD_CARD_BYTES} bytes.`
+            )}
+            {renderHexEditor(
+              "arenaLog",
+              "Arena log",
+              ARENA_LOG_BYTES,
+              (bytes) =>
+                setGuildCard((prev) =>
+                  prev
+                    ? { ...prev, arenaLog: bytes }
+                    : { card: new Uint8Array(GUILD_CARD_BYTES), arenaLog: bytes }
+                ),
+              `${ARENA_LOG_BYTES} bytes.`
+            )}
+            <div className="subcard-header">
+              <div>
+                <p className="label">Shoutouts</p>
+                <p className="meta">Manual + automatic messages.</p>
+              </div>
+              <span className="pill">{(shoutouts.manual.length + shoutouts.automatic.length).toLocaleString()} bytes</span>
+            </div>
+            {renderHexEditor(
+              "manualShoutouts",
+              "Manual shoutouts",
+              MANUAL_SHOUTOUT_BYTES,
+              (bytes) =>
+                setShoutouts((prev) =>
+                  prev
+                    ? { ...prev, manual: bytes }
+                    : { manual: bytes, automatic: new Uint8Array(AUTOMATIC_SHOUTOUT_BYTES) }
+                ),
+              `${MANUAL_SHOUTOUT_BYTES} bytes.`
+            )}
+            {renderHexEditor(
+              "automaticShoutouts",
+              "Automatic shoutouts",
+              AUTOMATIC_SHOUTOUT_BYTES,
+              (bytes) =>
+                setShoutouts((prev) =>
+                  prev
+                    ? { ...prev, automatic: bytes }
+                    : { manual: new Uint8Array(MANUAL_SHOUTOUT_BYTES), automatic: bytes }
+                ),
+              `${AUTOMATIC_SHOUTOUT_BYTES} bytes.`
+            )}
+          </div>
+
+          <div className="subcard">
+            <div className="subcard-header">
+              <div>
+                <p className="label">Monster logs</p>
+                <p className="meta">Kills, captures, and size records.</p>
+              </div>
+              <span className="pill">
+                {(monsterLogs.kills.length + monsterLogs.captures.length + monsterLogs.sizes.length).toLocaleString()} bytes
+              </span>
+            </div>
+            {renderHexEditor(
+              "monsterKills",
+              "Kill log",
+              MONSTER_KILL_BYTES,
+              (bytes) =>
+                setMonsterLogs((prev) =>
+                  prev
+                    ? { ...prev, kills: bytes }
+                    : { kills: bytes, captures: new Uint8Array(MONSTER_CAPTURE_BYTES), sizes: new Uint8Array(MONSTER_SIZE_BYTES) }
+                ),
+              `${MONSTER_KILL_BYTES} bytes.`
+            )}
+            {renderHexEditor(
+              "monsterCaptures",
+              "Capture log",
+              MONSTER_CAPTURE_BYTES,
+              (bytes) =>
+                setMonsterLogs((prev) =>
+                  prev
+                    ? { ...prev, captures: bytes }
+                    : { kills: new Uint8Array(MONSTER_KILL_BYTES), captures: bytes, sizes: new Uint8Array(MONSTER_SIZE_BYTES) }
+                ),
+              `${MONSTER_CAPTURE_BYTES} bytes.`
+            )}
+            {renderHexEditor(
+              "monsterSizes",
+              "Size log",
+              MONSTER_SIZE_BYTES,
+              (bytes) =>
+                setMonsterLogs((prev) =>
+                  prev
+                    ? { ...prev, sizes: bytes }
+                    : { kills: new Uint8Array(MONSTER_KILL_BYTES), captures: new Uint8Array(MONSTER_CAPTURE_BYTES), sizes: bytes }
+                ),
+              `${MONSTER_SIZE_BYTES} bytes.`
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="hint">Load a save to edit guild card, shoutouts, and monster logs.</p>
+      )}
+    </div>
+  );
+
+  const renderActiveTab = () => {
+    switch (activeTab) {
+      case "edit":
+        return renderEditTab();
+      case "items":
+        return renderItemsTab();
+      case "hunterEquip":
+        return renderHunterEquipTab();
+      case "palicoEquip":
+        return renderPalicoEquipTab();
+      case "progress":
+        return renderProgressTab();
+      default:
+        return renderEditTab();
+    }
+  };
+
   return (
     <div className="page">
       <div className="bg-accent" />
@@ -650,62 +1098,25 @@ function App() {
           </div>
         </section>
 
-        <section className="card tall">
-          <div className="card-header">
-            <h2>3) Edit values</h2>
-            <span className="chip subtle">General info</span>
+      </main>
+
+      <section className="card tall tab-card">
+        <div className="tab-header">
+          <div>
+            <h2>3) Edit save data</h2>
+            <p className="meta">
+              {loadedSave
+                ? `Working on slot ${currentSlot}. Toggle tabs to edit different areas.`
+                : "Load a save to unlock the editor tabs below."}
+            </p>
           </div>
-          {form ? (
-            <div className="form-grid">
-              {FIELD_META.map((field) => (
-                <label key={field.key} className="field">
-                  <div className="field-top">
-                    <span>{field.label}</span>
-                    {field.key === "playTime" && (
-                      <span className="meta">{decodedPlayTime}</span>
-                    )}
-                  </div>
-                  <input
-                    type={field.key === "name" ? "text" : "number"}
-                    min={field.min}
-                    max={field.max}
-                    value={
-                      field.key === "name"
-                        ? form.name
-                        : (form[field.key] as number)
-                    }
-                    onChange={(e) => updateField(field.key, e.target.value)}
-                    aria-label={field.label}
-                  />
-                  <div className="field-helper">
-                    <span>{field.helper ?? " "}</span>
-                    {field.key === "name" && (
-                      <span
-                        className={isNameTooLong ? "meta meta-warn" : "meta"}
-                        title="UTF-8 bytes used"
-                      >
-                        {nameBytes}/32 bytes
-                      </span>
-                    )}
-                  </div>
-                </label>
-              ))}
-            </div>
-          ) : (
-            <p className="hint">Load a save slot to edit values.</p>
-          )}
-          <div className="actions">
-            <button
-              className="primary"
-              disabled={!canDownload}
-              onClick={handleDownload}
-            >
+          <div className="tab-actions">
+            <button className="primary" disabled={!canDownload} onClick={handleDownload}>
               Download updated save
             </button>
-            <div className="stack">
+            <div className="stack compact">
               <span className="meta">
-                Changes apply to slot {currentSlot}. Keep a backup before
-                replacing your original file.
+                Changes apply to slot {currentSlot}. Keep a backup before replacing your original file.
               </span>
               {isNameTooLong && (
                 <span className="error">
@@ -717,345 +1128,24 @@ function App() {
               )}
             </div>
           </div>
-        </section>
+        </div>
 
-        <section className="card tall">
-          <div className="card-header">
-            <h2>4) Items & equipment</h2>
-            <span className="chip subtle">Inventory</span>
-          </div>
-          {loadedSave && items && equipment && palicoes ? (
-            <div className="block-grid">
-              <div className="subcard">
-                <div className="subcard-header">
-                  <div>
-                    <p className="label">Item box</p>
-                    <p className="meta">
-                      {filledItemCount}/{ITEM_SLOT_COUNT} slots with items. IDs up to {(1 << ITEM_ID_BITS) - 1},
-                      counts up to {MAX_ITEM_STACK}.
-                    </p>
-                  </div>
-                  <span className="pill">{ITEM_SLOT_COUNT} slots</span>
-                </div>
-                <div className="item-form">
-                  <label className="field small full">
-                    <div className="field-top">
-                      <span>Search items</span>
-                      <span className="meta">Filter both lists by name or ID. Full catalog is still shown.</span>
-                    </div>
-                    <input
-                      type="text"
-                      value={itemSearch}
-                      onChange={(e) => setItemSearch(e.target.value)}
-                      placeholder="Potion, Powercharm, 99..."
-                    />
-                  </label>
-                  <div className="item-lists">
-                    <div className="item-list">
-                      <div className="list-head">
-                        <div>
-                          <p className="label">Item catalog</p>
-                          <p className="meta">All items with quick +/- controls.</p>
-                        </div>
-                        <span className="pill">{filteredItems.length} items</span>
-                      </div>
-                      <div className="list-body">
-                        {filteredItems.map((item) => (
-                          <div className="item-row" key={item.id}>
-                            <div>
-                              <p className="label small">{item.name}</p>
-                              <p className="meta">ID {item.id}</p>
-                            </div>
-                            <div className="row-actions">
-                              <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
-                                -
-                              </button>
-                              <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
-                                -10
-                              </button>
-                              <span className="pill count">{itemTotals.get(item.id) ?? 0}</span>
-                              <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
-                                +
-                              </button>
-                              <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 10)}>
-                                +10
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="item-list">
-                      <div className="list-head">
-                        <div>
-                          <p className="label">Current inventory</p>
-                          <p className="meta">Only items you currently hold.</p>
-                        </div>
-                        <span className="pill">{itemSummary.length} types</span>
-                      </div>
-                      <div className="list-body">
-                        {itemSummary.length === 0 && <span className="hint">No items yet.</span>}
-                        {itemSummary.map((item) => (
-                          <div className="item-row" key={item.id}>
-                            <div>
-                              <p className="label small">{item.name}</p>
-                              <p className="meta">ID {item.id}</p>
-                            </div>
-                            <div className="row-actions">
-                              <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
-                                -
-                              </button>
-                              <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
-                                -10
-                              </button>
-                              <span className="pill count">{item.count}</span>
-                              <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
-                                +
-                              </button>
-                              <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 10)}>
-                                +10
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <details className="manual-editor">
-                    <summary>Advanced: edit a specific slot</summary>
-                    <div className="inline-fields">
-                      <label className="field small">
-                        <div className="field-top">
-                          <span>Slot #</span>
-                        </div>
-                        <input
-                          type="number"
-                          min={1}
-                          max={ITEM_SLOT_COUNT}
-                          value={itemSlotInput}
-                          onChange={(e) => setItemSlotFromValue(Number(e.target.value))}
-                        />
-                        <div className="field-helper">
-                          <span>1-{ITEM_SLOT_COUNT}</span>
-                        </div>
-                      </label>
-                      <label className="field small">
-                        <div className="field-top">
-                          <span>Item ID</span>
-                        </div>
-                        <input
-                          type="number"
-                          min={0}
-                          max={(1 << ITEM_ID_BITS) - 1}
-                          value={itemIdInput}
-                          onChange={(e) => setItemIdInput(Number(e.target.value))}
-                        />
-                        <div className="field-helper">
-                          <span>{getItemName(itemIdInput)}</span>
-                        </div>
-                      </label>
-                      <label className="field small">
-                        <div className="field-top">
-                          <span>Count</span>
-                        </div>
-                        <input
-                          type="number"
-                          min={0}
-                          max={(1 << ITEM_COUNT_BITS) - 1}
-                          value={itemCountInput}
-                          onChange={(e) => setItemCountInput(Number(e.target.value))}
-                        />
-                        <div className="field-helper">
-                          <span>0-{(1 << ITEM_COUNT_BITS) - 1}</span>
-                        </div>
-                      </label>
-                    </div>
-                    <div className="actions wrap">
-                      <button className="primary" type="button" onClick={applyItemSlot}>
-                        Save slot
-                      </button>
-                      <button className="ghost" type="button" onClick={() => setItemSlotFromValue(itemSlotInput)}>
-                        Reload slot
-                      </button>
-                      <button className="ghost" type="button" onClick={clearItemSlot}>
-                        Clear slot
-                      </button>
-                    </div>
-                  </details>
-                </div>
-              </div>
+        <div className="tab-bar">
+          {TAB_CONFIG.map((tab) => (
+            <button
+              key={tab.key}
+              className={`tab ${activeTab === tab.key ? "active" : ""}`}
+              onClick={() => setActiveTab(tab.key)}
+              disabled={!loadedSave}
+            >
+              <span className="tab-label">{tab.label}</span>
+              <span className="meta">{tab.helper}</span>
+            </button>
+          ))}
+        </div>
 
-              <div className="subcard">
-                <div className="subcard-header">
-                  <div>
-                    <p className="label">Equipment & Palicoes</p>
-                    <p className="meta">Paste hex dumps or drop per-block files. Length must stay exact.</p>
-                  </div>
-                  <span className="pill">Raw editors</span>
-                </div>
-                {renderHexEditor(
-                  "hunterEquip",
-                  "Hunter equipment box",
-                  EQUIPMENT_BOX_BYTES,
-                  (bytes) =>
-                    setEquipment((prev) =>
-                      prev
-                        ? { ...prev, hunter: bytes }
-                        : { hunter: bytes, palico: new Uint8Array(PALICO_EQUIPMENT_BYTES) }
-                    ),
-                  "72,000 bytes. Import an eqpboXX export or paste hex."
-                )}
-                {renderHexEditor(
-                  "palicoEquip",
-                  "Palico equipment box",
-                  PALICO_EQUIPMENT_BYTES,
-                  (bytes) =>
-                    setEquipment((prev) =>
-                      prev
-                        ? { ...prev, palico: bytes }
-                        : { palico: bytes, hunter: new Uint8Array(EQUIPMENT_BOX_BYTES) }
-                    ),
-                  "36,000 bytes."
-                )}
-                {renderHexEditor(
-                  "palicoes",
-                  "Palicoes",
-                  PALICO_BYTES,
-                  (bytes) => setPalicoes((prev) => (prev ? { ...prev, raw: bytes } : { raw: bytes })),
-                  `${palicoCount} populated slots. Block size ${PALICO_BYTES} bytes.`
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="hint">Load a save to edit item box, equipment, and palicoes.</p>
-          )}
-        </section>
-
-        <section className="card tall">
-          <div className="card-header">
-            <h2>5) Guild card, shoutouts, monsters</h2>
-            <span className="chip subtle">Progress</span>
-          </div>
-          {loadedSave && guildCard && shoutouts && monsterLogs ? (
-            <div className="block-grid">
-              <div className="subcard">
-                <div className="subcard-header">
-                  <div>
-                    <p className="label">Guild card</p>
-                    <p className="meta">Arena log included—keep byte counts matched.</p>
-                  </div>
-                  <span className="pill">{(guildCard.card.length + guildCard.arenaLog.length).toLocaleString()} bytes</span>
-                </div>
-                {renderHexEditor(
-                  "guildCard",
-                  "Guild card block",
-                  GUILD_CARD_BYTES,
-                  (bytes) =>
-                    setGuildCard((prev) =>
-                      prev
-                        ? { ...prev, card: bytes }
-                        : { card: bytes, arenaLog: new Uint8Array(ARENA_LOG_BYTES) }
-                    ),
-                  `${GUILD_CARD_BYTES} bytes.`
-                )}
-                {renderHexEditor(
-                  "arenaLog",
-                  "Arena log",
-                  ARENA_LOG_BYTES,
-                  (bytes) =>
-                    setGuildCard((prev) =>
-                      prev
-                        ? { ...prev, arenaLog: bytes }
-                        : { card: new Uint8Array(GUILD_CARD_BYTES), arenaLog: bytes }
-                    ),
-                  `${ARENA_LOG_BYTES} bytes.`
-                )}
-                <div className="subcard-header">
-                  <div>
-                    <p className="label">Shoutouts</p>
-                    <p className="meta">Manual + automatic messages.</p>
-                  </div>
-                  <span className="pill">{(shoutouts.manual.length + shoutouts.automatic.length).toLocaleString()} bytes</span>
-                </div>
-                {renderHexEditor(
-                  "manualShoutouts",
-                  "Manual shoutouts",
-                  MANUAL_SHOUTOUT_BYTES,
-                  (bytes) =>
-                    setShoutouts((prev) =>
-                      prev
-                        ? { ...prev, manual: bytes }
-                        : { manual: bytes, automatic: new Uint8Array(AUTOMATIC_SHOUTOUT_BYTES) }
-                    ),
-                  `${MANUAL_SHOUTOUT_BYTES} bytes.`
-                )}
-                {renderHexEditor(
-                  "automaticShoutouts",
-                  "Automatic shoutouts",
-                  AUTOMATIC_SHOUTOUT_BYTES,
-                  (bytes) =>
-                    setShoutouts((prev) =>
-                      prev
-                        ? { ...prev, automatic: bytes }
-                        : { manual: new Uint8Array(MANUAL_SHOUTOUT_BYTES), automatic: bytes }
-                    ),
-                  `${AUTOMATIC_SHOUTOUT_BYTES} bytes.`
-                )}
-              </div>
-
-              <div className="subcard">
-                <div className="subcard-header">
-                  <div>
-                    <p className="label">Monster logs</p>
-                    <p className="meta">Kills, captures, and size records.</p>
-                  </div>
-                  <span className="pill">
-                    {(monsterLogs.kills.length + monsterLogs.captures.length + monsterLogs.sizes.length).toLocaleString()} bytes
-                  </span>
-                </div>
-                {renderHexEditor(
-                  "monsterKills",
-                  "Kill log",
-                  MONSTER_KILL_BYTES,
-                  (bytes) =>
-                    setMonsterLogs((prev) =>
-                      prev
-                        ? { ...prev, kills: bytes }
-                        : { kills: bytes, captures: new Uint8Array(MONSTER_CAPTURE_BYTES), sizes: new Uint8Array(MONSTER_SIZE_BYTES) }
-                    ),
-                  `${MONSTER_KILL_BYTES} bytes.`
-                )}
-                {renderHexEditor(
-                  "monsterCaptures",
-                  "Capture log",
-                  MONSTER_CAPTURE_BYTES,
-                  (bytes) =>
-                    setMonsterLogs((prev) =>
-                      prev
-                        ? { ...prev, captures: bytes }
-                        : { kills: new Uint8Array(MONSTER_KILL_BYTES), captures: bytes, sizes: new Uint8Array(MONSTER_SIZE_BYTES) }
-                    ),
-                  `${MONSTER_CAPTURE_BYTES} bytes.`
-                )}
-                {renderHexEditor(
-                  "monsterSizes",
-                  "Size log",
-                  MONSTER_SIZE_BYTES,
-                  (bytes) =>
-                    setMonsterLogs((prev) =>
-                      prev
-                        ? { ...prev, sizes: bytes }
-                        : { kills: new Uint8Array(MONSTER_KILL_BYTES), captures: new Uint8Array(MONSTER_CAPTURE_BYTES), sizes: bytes }
-                    ),
-                  `${MONSTER_SIZE_BYTES} bytes.`
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="hint">Load a save to edit guild card, shoutouts, and monster logs.</p>
-          )}
-        </section>
-      </main>
+        <div className="tab-body">{renderActiveTab()}</div>
+      </section>
     </div>
   );
 }

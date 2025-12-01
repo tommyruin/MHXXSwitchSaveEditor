@@ -118,6 +118,90 @@
   grid-column: span 2;
 }
 
+.tab-card {
+  margin-top: 12px;
+}
+
+.tab-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tab-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.stack.compact {
+  gap: 2px;
+  max-width: 360px;
+}
+
+.tab-bar {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.tab {
+  border: 1px solid var(--border);
+  background: var(--panel-strong);
+  border-radius: 12px;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.1s ease, transform 0.08s ease, box-shadow 0.1s ease;
+}
+
+.tab .tab-label {
+  font-weight: 700;
+  display: block;
+}
+
+.tab .meta {
+  display: block;
+  margin-top: 4px;
+}
+
+.tab.active {
+  border-color: rgba(14, 165, 233, 0.7);
+  box-shadow: 0 12px 30px rgba(14, 165, 233, 0.12);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.22), rgba(14, 165, 233, 0.08));
+}
+
+.tab:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tab-body {
+  margin-top: 14px;
+}
+
+.tab-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.tab-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
 .card-header {
   display: flex;
   align-items: center;
