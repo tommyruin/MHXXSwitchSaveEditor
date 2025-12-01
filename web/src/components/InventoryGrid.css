@@ -1,0 +1,79 @@
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 4px;
+  padding: 10px;
+  background-color: #2c2c2c;
+  /* Dark background like MH */
+  border: 2px solid #5a5a5a;
+  max-width: 600px;
+  /* Adjust based on icon size */
+}
+
+.inventory-slot {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  background-color: #1a1a1a;
+  border: 1px solid #3a3a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.1s;
+}
+
+.inventory-slot:hover {
+  border-color: #aaa;
+}
+
+.inventory-slot.selected {
+  border-color: #e0c050;
+  /* MH selection yellow/gold */
+  box-shadow: 0 0 4px #e0c050;
+}
+
+.item-icon-container {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  /* Isolate blending context */
+  isolation: isolate;
+}
+
+.item-icon {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Use background color with multiply blend mode for colored icons */
+.item-icon-container[style*="--icon-color"] {
+  background-color: var(--icon-color);
+  border-radius: 2px;
+}
+
+.item-icon-container[style*="--icon-color"] .item-icon {
+  mix-blend-mode: multiply;
+}
+
+.item-count {
+  position: absolute;
+  bottom: 0;
+  right: 2px;
+  font-size: 12px;
+  color: white;
+  text-shadow: 1px 1px 0 #000;
+  font-weight: bold;
+  z-index: 10;
+  mix-blend-mode: normal;
+}
+
+.item-placeholder {
+  color: #555;
+  font-size: 20px;
+}

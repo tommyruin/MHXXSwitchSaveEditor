@@ -44,6 +44,8 @@ import {
 } from "./lib/types";
 import { ITEMS } from "./lib/data/items";
 import "./App.css";
+import './components/InventoryGrid.css';
+import InventoryGrid from './components/InventoryGrid';
 
 type FieldKey = keyof PlayerCore;
 type TabKey = "edit" | "items" | "hunterEquip" | "palicoEquip" | "progress";
@@ -55,17 +57,17 @@ const FIELD_META: Array<{
   min?: number;
   max?: number;
 }> = [
-  { key: "name", label: "Hunter Name", helper: "32 bytes max (UTF-8)" },
-  { key: "playTime", label: "Play Time (seconds)", min: 0 },
-  { key: "funds", label: "Funds (zenny)", min: 0 },
-  { key: "hunterRank", label: "Hunter Rank", min: 1 },
-  { key: "hrPoints", label: "HR Points", min: 0 },
-  { key: "academyPoints", label: "Academy Points", min: 0 },
-  { key: "bhernaPoints", label: "Bherna Points", min: 0 },
-  { key: "kokotoPoints", label: "Kokoto Points", min: 0 },
-  { key: "pokkePoints", label: "Pokke Points", min: 0 },
-  { key: "yukumoPoints", label: "Yukumo Points", min: 0 }
-];
+    { key: "name", label: "Hunter Name", helper: "32 bytes max (UTF-8)" },
+    { key: "playTime", label: "Play Time (seconds)", min: 0 },
+    { key: "funds", label: "Funds (zenny)", min: 0 },
+    { key: "hunterRank", label: "Hunter Rank", min: 1 },
+    { key: "hrPoints", label: "HR Points", min: 0 },
+    { key: "academyPoints", label: "Academy Points", min: 0 },
+    { key: "bhernaPoints", label: "Bherna Points", min: 0 },
+    { key: "kokotoPoints", label: "Kokoto Points", min: 0 },
+    { key: "pokkePoints", label: "Pokke Points", min: 0 },
+    { key: "yukumoPoints", label: "Yukumo Points", min: 0 }
+  ];
 
 const encoder = new TextEncoder();
 
@@ -340,15 +342,15 @@ function App() {
 
   const canDownload = Boolean(
     loadedSave &&
-      form &&
-      items &&
-      equipment &&
-      palicoes &&
-      guildCard &&
-      shoutouts &&
-      monsterLogs &&
-      !isNameTooLong &&
-      !hasBlockErrors
+    form &&
+    items &&
+    equipment &&
+    palicoes &&
+    guildCard &&
+    shoutouts &&
+    monsterLogs &&
+    !isNameTooLong &&
+    !hasBlockErrors
   );
 
   const handleDownload = () => {
@@ -627,6 +629,12 @@ function App() {
     </div>
   );
 
+  const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+
+  const handleItemClick = (item: ItemSlot, index: number) => {
+    setSelectedItemIndex(index);
+  };
+
   const renderItemsTab = () => (
     <div className="tab-panel" data-tab="items">
       {loadedSave && items ? (
@@ -698,30 +706,11 @@ function App() {
                   <span className="pill">{itemSummary.length} types</span>
                 </div>
                 <div className="list-body">
-                  {itemSummary.length === 0 && <span className="hint">No items yet.</span>}
-                  {itemSummary.map((item) => (
-                    <div className="item-row" key={item.id}>
-                      <div>
-                        <p className="label small">{item.name}</p>
-                        <p className="meta">ID {item.id}</p>
-                      </div>
-                      <div className="row-actions">
-                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
-                          -
-                        </button>
-                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
-                          -10
-                        </button>
-                        <span className="pill count">{item.count}</span>
-                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
-                          +
-                        </button>
-                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 10)}>
-                          +10
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  <InventoryGrid
+                    items={itemSummary}
+                    onItemClick={handleItemClick}
+                    selectedIndex={selectedItemIndex}
+                  />
                 </div>
               </div>
             </div>
