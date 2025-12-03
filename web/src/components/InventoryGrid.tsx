@@ -27,25 +27,28 @@ const InventoryGrid: React.FC<InventoryGridProps> = ({ items, onItemClick, selec
         // @ts-ignore
         const colorCode = itemColors[itemId];
         if (colorCode) {
-            // Map color codes to hex colors
+            // Map color codes to hex colors based on actual MHGU items
+            // Verified with: Gunpowder, Mega Pickaxe, Maccao Hide, Honey, Mega Potion, Antidote
             const colorMap: Record<number, string> = {
-                1: '#FFFFFF', // White
-                2: '#90EE90', // Light Green
-                3: '#FFD700', // Gold/Yellow
-                4: '#FFA500', // Orange
-                5: '#FF6B6B', // Red/Pink
-                6: '#87CEEB', // Light Blue
-                7: '#9370DB', // Purple
-                8: '#A0522D', // Brown
-                9: '#808080', // Gray
-                10: '#C0C0C0', // Silver
-                11: '#FFE4B5', // Beige/Tan
-                12: '#98FB98', // Pale Green
-                13: '#F0E68C', // Khaki
-                14: '#DDA0DD', // Plum
-                15: '#FF69B4', // Hot Pink
-                16: '#00CED1', // Dark Turquoise
+                0: '#F5F5F5', // White
+                1: '#E1505C', // Red
+                2: '#69BF83', // Green
+                3: '#9FBBFF', // Blue
+                4: '#F7CF65', // Yellow
+                5: '#C3A3D1', // Purple
+                6: '#9BDFF0', // Light Blue
+                7: '#F79A65', // Orange
+                8: '#F8889D', // Pink
+                9: '#ADD56D', // Light Green
+                10: '#AAAAAA', // Gray
+                11: '#C1972E', // Brown
+                12: '#57EBC7', // Emerald
+                13: '#55893B', // Moss
+                14: '#990000', // Rose
+                15: '#003399', // Dark Blue
+                16: '#660066', // Dark Purple
             };
+            // @ts-ignore
             return colorMap[colorCode] || null;
         }
         return null;

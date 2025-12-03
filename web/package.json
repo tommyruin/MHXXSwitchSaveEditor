@@ -10,6 +10,7 @@
     "fetch-assets": "node scripts/fetch_assets.js"
   },
   "dependencies": {
+    "better-sqlite3": "^12.5.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

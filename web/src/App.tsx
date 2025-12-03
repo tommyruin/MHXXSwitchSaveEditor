@@ -1038,7 +1038,7 @@ function App() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".bin,.dat,.sav,*/*"
+              accept="*/*"
               onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
             />
             <p>
