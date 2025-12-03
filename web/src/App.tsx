@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { GuildCardEditor } from "./components/GuildCardEditor";
 import { ShoutoutsEditor } from "./components/ShoutoutsEditor";
 import { MonsterLogsEditor } from "./components/MonsterLogsEditor";
+import { QuestFlagsEditor } from "./components/QuestFlagsEditor";
 import {
   assembleSave,
   detectSave,
@@ -13,6 +14,7 @@ import {
   parsePalicoes,
   parsePlayer,
   parseShoutouts,
+  parseQuestFlags,
   parseHunterEquipmentEntries,
   parsePalicoEquipmentEntries,
   parsePalicoRosterEntries,
@@ -20,12 +22,13 @@ import {
   writeGuildCard,
   writeItemBox,
   writeMonsterLogs,
-  writeHunterEquipmentEntries,
-  writePalicoEquipmentEntries,
-  writePalicoRosterEntries,
   writePalicoes,
   writePlayer,
-  writeShoutouts
+  writeShoutouts,
+  writeQuestFlags,
+  writeHunterEquipmentEntries,
+  writePalicoEquipmentEntries,
+  writePalicoRosterEntries
 } from "./lib/saveParser";
 import {
   EquipmentBoxes,
@@ -39,6 +42,7 @@ import {
   PalicoData,
   PlayerCore,
   ShoutoutData,
+  QuestFlagData,
   ARENA_LOG_BYTES,
   AUTOMATIC_SHOUTOUT_BYTES,
   EQUIPMENT_BOX_BYTES,
@@ -56,7 +60,8 @@ import {
   ITEM_ID_BITS,
   ITEM_SLOT_COUNT,
   EQUIPMENT_SLOT_COUNT,
-  PALICO_SLOT_BYTES
+  PALICO_SLOT_BYTES,
+  QUEST_FLAGS_BYTES
 } from "./lib/types";
 import { ITEMS } from "./lib/data/items";
 import { EQUIPMENT_CATALOG, ARMOR_PIECE_TYPES, WEAPON_TYPE_LIST } from "./lib/data/equipmentCatalog";
@@ -86,7 +91,7 @@ import { getIconPath, getIconColor } from './lib/itemUtils';
 import { deriveRarityLabel, getEquipmentTypeName, getEquipmentName, getEquipmentIcon, getRarityColor, rarityToLevelBits, getRarityColorFromNumber } from "./lib/equipmentUtils";
 
 type FieldKey = keyof PlayerCore;
-type TabKey = "edit" | "items" | "hunterEquip" | "palicoEquip" | "progress";
+type TabKey = "edit" | "items" | "hunterEquip" | "palicoEquip" | "progress" | "quests";
 
 const FIELD_META: Array<{
   key: FieldKey;
@@ -148,7 +153,8 @@ type HexBlockKey =
   | "automaticShoutouts"
   | "monsterKills"
   | "monsterCaptures"
-  | "monsterSizes";
+  | "monsterSizes"
+  | "questFlags";
 
 const emptyHexBlocks: Record<HexBlockKey, string> = {
   hunterEquip: "",
@@ -160,7 +166,8 @@ const emptyHexBlocks: Record<HexBlockKey, string> = {
   automaticShoutouts: "",
   monsterKills: "",
   monsterCaptures: "",
-  monsterSizes: ""
+  monsterSizes: "",
+  questFlags: ""
 };
 
 const emptyBlockErrors: Record<HexBlockKey, string | null> = {
@@ -173,7 +180,8 @@ const emptyBlockErrors: Record<HexBlockKey, string | null> = {
   automaticShoutouts: null,
   monsterKills: null,
   monsterCaptures: null,
-  monsterSizes: null
+  monsterSizes: null,
+  questFlags: null
 };
 
 const TAB_CONFIG: Array<{ key: TabKey; label: string; helper: string }> = [
@@ -181,7 +189,8 @@ const TAB_CONFIG: Array<{ key: TabKey; label: string; helper: string }> = [
   { key: "items", label: "Items & inventory", helper: "Item box totals and slots" },
   { key: "hunterEquip", label: "Hunter equipment box", helper: "Full hunter gear hex block" },
   { key: "palicoEquip", label: "Palico equipment & pals", helper: "Palico gear and roster hex blocks" },
-  { key: "progress", label: "Guild card & logs", helper: "Arena log, shoutouts, monster data" }
+  { key: "progress", label: "Guild card & logs", helper: "Arena log, shoutouts, monster data" },
+  { key: "quests", label: "Quest Flags", helper: "Quest completion flags" }
 ];
 
 function App() {
@@ -198,6 +207,7 @@ function App() {
   const [guildCard, setGuildCard] = useState<GuildCardData | null>(null);
   const [shoutouts, setShoutouts] = useState<ShoutoutData | null>(null);
   const [monsterLogs, setMonsterLogs] = useState<MonsterLogData | null>(null);
+  const [questFlags, setQuestFlags] = useState<QuestFlagData | null>(null);
   const [status, setStatus] = useState<string>(initialMessage);
   const [error, setError] = useState<string | null>(null);
   const [itemSlotInput, setItemSlotInput] = useState<number>(1);
@@ -307,6 +317,15 @@ function App() {
     }));
   }, [monsterLogs]);
 
+  useEffect(() => {
+    if (!questFlags) return;
+    setHexBlocks((prev) => ({
+      ...prev,
+      questFlags: bytesToHex(questFlags.raw)
+    }));
+    setBlockErrors((prev) => ({ ...prev, questFlags: null }));
+  }, [questFlags]);
+
   const handleFileChange = async (file: File | null) => {
     if (!file) {
       return;
@@ -326,6 +345,7 @@ function App() {
       setGuildCard(parseGuildCard(detected.payload, slot));
       setShoutouts(parseShoutouts(detected.payload, slot));
       setMonsterLogs(parseMonsterLogs(detected.payload, slot));
+      setQuestFlags(parseQuestFlags(detected.payload, slot));
       setActiveTab("edit");
       setStatus(
         `Loaded ${detected.kind.toUpperCase()} save • Slot ${slot} ready`
@@ -342,6 +362,7 @@ function App() {
       setGuildCard(null);
       setShoutouts(null);
       setMonsterLogs(null);
+      setQuestFlags(null);
       setHexBlocks(emptyHexBlocks);
       setBlockErrors(emptyBlockErrors);
       setItemSlotInput(1);
@@ -372,6 +393,7 @@ function App() {
     setGuildCard(parseGuildCard(loadedSave.payload, slotNumber));
     setShoutouts(parseShoutouts(loadedSave.payload, slotNumber));
     setMonsterLogs(parseMonsterLogs(loadedSave.payload, slotNumber));
+    setQuestFlags(parseQuestFlags(loadedSave.payload, slotNumber));
     setStatus(`Slot ${slotNumber} loaded`);
   };
 
@@ -549,12 +571,13 @@ function App() {
     guildCard &&
     shoutouts &&
     monsterLogs &&
+    questFlags &&
     !isNameTooLong &&
     !hasBlockErrors
   );
 
   const handleDownload = () => {
-    if (!loadedSave || !form || !items || !equipment || !palicoes || !guildCard || !shoutouts || !monsterLogs) return;
+    if (!loadedSave || !form || !items || !equipment || !palicoes || !guildCard || !shoutouts || !monsterLogs || !questFlags) return;
     try {
       let updatedPayload = writePlayer(loadedSave.payload, currentSlot, {
         ...form,
@@ -566,6 +589,7 @@ function App() {
       updatedPayload = writeGuildCard(updatedPayload, currentSlot, guildCard);
       updatedPayload = writeShoutouts(updatedPayload, currentSlot, shoutouts);
       updatedPayload = writeMonsterLogs(updatedPayload, currentSlot, monsterLogs);
+      updatedPayload = writeQuestFlags(updatedPayload, currentSlot, questFlags);
       const merged = assembleSave(loadedSave.header, updatedPayload);
       setLoadedSave({ ...loadedSave, payload: updatedPayload });
       const blob = new Blob([merged], { type: "application/octet-stream" });
@@ -592,6 +616,7 @@ function App() {
     setGuildCard(null);
     setShoutouts(null);
     setMonsterLogs(null);
+    setQuestFlags(null);
     setHexBlocks(emptyHexBlocks);
     setBlockErrors(emptyBlockErrors);
     setItemSlotInput(1);
@@ -2039,6 +2064,18 @@ function App() {
     </div>
   );
 
+  const renderQuestsTab = () => (
+    <div className="tab-panel" data-tab="quests">
+      {loadedSave && questFlags ? (
+        <div className="subcard">
+          <QuestFlagsEditor questFlags={questFlags} onUpdate={setQuestFlags} />
+        </div>
+      ) : (
+        <p className="hint">Load a save to view and edit quest completion flags.</p>
+      )}
+    </div>
+  );
+
   const renderActiveTab = () => {
     switch (activeTab) {
       case "edit":
@@ -2051,6 +2088,8 @@ function App() {
         return renderPalicoEquipTab();
       case "progress":
         return renderProgressTab();
+      case "quests":
+        return renderQuestsTab();
       default:
         return renderEditTab();
     }

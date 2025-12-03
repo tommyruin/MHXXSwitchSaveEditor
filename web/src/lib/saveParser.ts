@@ -21,6 +21,7 @@ import {
   PALICO_EQUIP_SLOT_BYTES,
   PALICO_ROSTER_SLOT_COUNT,
   PALICO_SLOT_BYTES,
+  QUEST_FLAGS_BYTES,
   PlayerCore,
   ItemSlot,
   EquipmentBoxes,
@@ -31,6 +32,8 @@ import {
   GuildCardData,
   ShoutoutData,
   MonsterLogData,
+  QuestFlagData,
+  QuestFlagEntry,
   LoadedSave,
   ArenaRecord,
   MonsterLogEntry
@@ -42,6 +45,7 @@ import {
   ARENA_WEAPONS,
   ARENA_PALICO
 } from "./gameConstants";
+import { getQuestByFlagIndex } from "./data/questCatalog";
 
 const BASE_SAVE_SIZE = 4726152;
 const SWITCH_HEADER_SIZE = 36;
@@ -80,7 +84,10 @@ const OFFSETS = {
   GUILCARD_OFFSET: 0xc71bd,
   GUILDCARD_ARENA_LOG_OFFSET: 0xc83e1,
   MANUAL_SHOUTOUT_OFFSETS: 0x11d629,
-  AUTOMATIC_SHOUTOUT_OFFSETS: 0x11e169
+  AUTOMATIC_SHOUTOUT_OFFSETS: 0x11e169,
+  // Quest flags - using most likely region from research (Region 10-11)
+  // Starting at 0x001B092E, covering enough bytes for all possible quest flags
+  QUEST_FLAGS_OFFSET: 0x1B092E
 } as const;
 
 type SlotIndex = 0 | 1 | 2;
@@ -1010,3 +1017,101 @@ const encodeMonsterLogs = (parsed: MonsterLogEntry[]): { kills: Uint8Array; capt
 
   return { kills, captures, sizes };
 };
+
+export const parseQuestFlags = (
+  payload: Uint8Array,
+  slotNumber: number
+): QuestFlagData => {
+  const slot = ensureSlot(slotNumber);
+  const view = new DataView(
+    payload.buffer,
+    payload.byteOffset,
+    payload.byteLength
+  );
+  const base = getSlotOffset(view, slot);
+
+  const raw = copyBlock(payload, base + OFFSETS.QUEST_FLAGS_OFFSET, QUEST_FLAGS_BYTES);
+  
+  return {
+    raw,
+    parsed: decodeQuestFlags(raw)
+  };
+};
+
+export const writeQuestFlags = (
+  payload: Uint8Array,
+  slotNumber: number,
+  questFlags: QuestFlagData
+): Uint8Array => {
+  const encoded = encodeQuestFlags(questFlags.parsed);
+  questFlags.raw = encoded;
+
+  if (questFlags.raw.length !== QUEST_FLAGS_BYTES) {
+    throw new Error(`Quest flags block must be ${QUEST_FLAGS_BYTES} bytes.`);
+  }
+
+  const slot = ensureSlot(slotNumber);
+  const updated = new Uint8Array(payload);
+  const view = new DataView(updated.buffer, updated.byteOffset, updated.byteLength);
+  const base = getSlotOffset(view, slot);
+
+  updated.set(questFlags.raw, base + OFFSETS.QUEST_FLAGS_OFFSET);
+
+  return updated;
+};
+
+const decodeQuestFlags = (raw: Uint8Array): QuestFlagEntry[] => {
+  const entries: QuestFlagEntry[] = [];
+
+  // Parse all bits in the quest flags buffer
+  // Each bit represents one quest, indexed by flagIndex (0-1354)
+  for (let byteIdx = 0; byteIdx < raw.length; byteIdx++) {
+    const byte = raw[byteIdx];
+    for (let bitIdx = 0; bitIdx < 8; bitIdx++) {
+      const flagIndex = byteIdx * 8 + bitIdx;
+      const completed = ((byte >> bitIdx) & 1) === 1;
+      
+      // Look up quest info from catalog
+      const questInfo = getQuestByFlagIndex(flagIndex);
+      
+      if (questInfo) {
+        entries.push({
+          questId: questInfo.dbId,
+          byteOffset: byteIdx,
+          bitOffset: bitIdx,
+          completed,
+          category: `${questInfo.hub} ${questInfo.stars}★`,
+          name: questInfo.name
+        });
+      } else {
+        // For bits beyond known quests (1355+), create placeholder entries
+        entries.push({
+          questId: flagIndex,
+          byteOffset: byteIdx,
+          bitOffset: bitIdx,
+          completed,
+          category: 'Unknown',
+          name: `Unknown Quest (bit ${flagIndex})`
+        });
+      }
+    }
+  }
+
+  return entries;
+};
+
+const encodeQuestFlags = (parsed: QuestFlagEntry[]): Uint8Array => {
+  const raw = new Uint8Array(QUEST_FLAGS_BYTES);
+
+  for (const entry of parsed) {
+    if (entry.completed) {
+      raw[entry.byteOffset] |= (1 << entry.bitOffset);
+    } else {
+      raw[entry.byteOffset] &= ~(1 << entry.bitOffset);
+    }
+  }
+
+  return raw;
+};
+
+

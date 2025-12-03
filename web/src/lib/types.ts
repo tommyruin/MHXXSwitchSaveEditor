@@ -154,3 +154,22 @@ export const AUTOMATIC_SHOUTOUT_BYTES = 1620;
 export const MONSTER_KILL_BYTES = 274;
 export const MONSTER_CAPTURE_BYTES = 274;
 export const MONSTER_SIZE_BYTES = 548;
+
+// Quest flags - based on research in Docs/quest_flag_findings.md
+// Using the most promising regions identified
+export const QUEST_FLAGS_BYTES = 2048; // Estimated size covering identified regions
+export const QUEST_FLAG_COUNT = QUEST_FLAGS_BYTES * 8; // Total possible quest flags (bits)
+
+export type QuestFlagData = {
+  raw: Uint8Array;
+  parsed: QuestFlagEntry[];
+};
+
+export type QuestFlagEntry = {
+  questId: number;      // Quest ID (if known)
+  byteOffset: number;   // Offset in the quest flags buffer
+  bitOffset: number;    // Bit position within the byte (0-7)
+  completed: boolean;   // Whether this quest is completed
+  category?: string;    // Village/Hub/G-Rank/etc (if known)
+  name?: string;        // Quest name (if available)
+};

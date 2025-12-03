@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "fetch-assets": "node scripts/fetch_assets.js"
+    "fetch-assets": "node scripts/fetch_assets.js",
+    "generate-quests": "node scripts/generateQuests.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0",
