@@ -1,19 +1,24 @@
 .inventory-grid {
   display: grid;
-  grid-template-columns: repeat(10, 1fr);
+  /* Responsive columns: fit as many 48px slots as possible, but allow them to grow */
+  grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
   gap: 4px;
   padding: 10px;
   background-color: #2c2c2c;
   /* Dark background like MH */
   border: 2px solid #5a5a5a;
-  max-width: 600px;
-  /* Adjust based on icon size */
+  width: 100%;
+  /* Take full width of container */
+  overflow-x: hidden;
+  /* Prevent horizontal overflow */
 }
 
 .inventory-slot {
   position: relative;
-  width: 48px;
-  height: 48px;
+  /* Use aspect ratio to maintain square shape while being responsive */
+  aspect-ratio: 1 / 1;
+  min-width: 48px;
+  min-height: 48px;
   background-color: #1a1a1a;
   border: 1px solid #3a3a3a;
   display: flex;
@@ -34,8 +39,8 @@
 }
 
 .item-icon-container {
-  width: 40px;
-  height: 40px;
+  width: 85%;
+  height: 85%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -45,8 +50,8 @@
 }
 
 .item-icon {
-  width: 40px;
-  height: 40px;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   display: block;
 }

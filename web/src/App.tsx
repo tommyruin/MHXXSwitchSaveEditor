@@ -46,6 +46,7 @@ import { ITEMS } from "./lib/data/items";
 import "./App.css";
 import './components/InventoryGrid.css';
 import InventoryGrid from './components/InventoryGrid';
+import { getIconPath, getIconColor } from './lib/itemUtils';
 
 type FieldKey = keyof PlayerCore;
 type TabKey = "edit" | "items" | "hunterEquip" | "palicoEquip" | "progress";
@@ -92,10 +93,13 @@ const hexToBytes = (hex: string, expectedLength: number) => {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
+
 const getItemName = (id: number) => ITEMS[id]?.name ?? `Unknown #${id}`;
 
-const MAX_ITEM_STACK = (1 << ITEM_COUNT_BITS) - 1;
+// Monster Hunter enforces a 99-item stack limit in-game, even though the save format supports up to 127
+const MAX_ITEM_STACK = 99;
 const MAX_ITEM_TOTAL = ITEM_SLOT_COUNT * MAX_ITEM_STACK;
+
 
 type HexBlockKey =
   | "hunterEquip"
@@ -321,23 +325,35 @@ function App() {
     [items]
   );
 
-  const itemSummary = useMemo(() => {
-    if (!itemTotals.size) return [] as Array<{ id: number; name: string; count: number }>;
-    return Array.from(itemTotals.entries())
-      .map(([id, count]) => ({ id, name: getItemName(id), count }))
-      .sort((a, b) => b.count - a.count);
-  }, [itemTotals]);
+  // Show individual item stacks as they appear in the save file (max 99 per stack)
+  const itemStacks = useMemo(() => {
+    if (!items) return [] as Array<{ id: number; name: string; count: number; slot: number }>;
+    return items
+      .map((entry, index) => ({ ...entry, name: getItemName(entry.id), slot: index + 1 }))
+      .filter((entry) => entry.id !== 0 && entry.count > 0);
+  }, [items]);
 
-  const filteredItems = useMemo(() => {
+  const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
     const query = itemSearch.trim().toLowerCase();
-    if (!query) return ITEMS;
-    return ITEMS.filter(
+    if (!query) return;
+
+    const match = ITEMS.find(
       (item) =>
         item.name.toLowerCase().includes(query) ||
         item.id.toString() === query ||
         item.id.toString().startsWith(query)
     );
+
+    if (match) {
+      const element = itemRefs.current.get(match.id);
+      if (element) {
+        element.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
   }, [itemSearch]);
+
   const hasBlockErrors = Object.values(blockErrors).some(Boolean);
 
   const canDownload = Boolean(
@@ -487,6 +503,31 @@ function App() {
   const adjustItemTotal = (id: number, delta: number) => {
     const current = itemTotals.get(id) ?? 0;
     setItemTotal(id, current + delta);
+  };
+
+  const sortInventoryById = () => {
+    setItems((prev) => {
+      if (!prev?.length) return prev;
+      const next = [...prev];
+
+      // Extract all non-empty items with their data
+      const nonEmptyItems = next
+        .map((item, index) => ({ ...item, originalIndex: index }))
+        .filter(item => item.id !== 0 && item.count > 0)
+        .sort((a, b) => a.id - b.id);
+
+      // Clear all slots
+      for (let i = 0; i < next.length; i++) {
+        next[i] = { id: 0, count: 0 };
+      }
+
+      // Place sorted items back starting from slot 0
+      nonEmptyItems.forEach((item, index) => {
+        next[index] = { id: item.id, count: item.count };
+      });
+
+      return next;
+    });
   };
 
   const applyHexBlock = (
@@ -653,7 +694,7 @@ function App() {
             <label className="field small full">
               <div className="field-top">
                 <span>Search items</span>
-                <span className="meta">Filter both lists by name or ID. Full catalog is still shown.</span>
+                <span className="meta">Type to scroll to item.</span>
               </div>
               <input
                 type="text"
@@ -669,32 +710,64 @@ function App() {
                     <p className="label">Item catalog</p>
                     <p className="meta">All items with quick +/- controls.</p>
                   </div>
-                  <span className="pill">{filteredItems.length} items</span>
+                  <span className="pill">{ITEMS.length} items</span>
                 </div>
                 <div className="list-body">
-                  {filteredItems.map((item) => (
-                    <div className="item-row" key={item.id}>
-                      <div>
-                        <p className="label small">{item.name}</p>
-                        <p className="meta">ID {item.id}</p>
+                  {ITEMS.map((item) => {
+                    const iconPath = getIconPath(item.id);
+                    const iconColor = getIconColor(item.id);
+                    return (
+                      <div
+                        className="item-row"
+                        key={item.id}
+                        ref={(el) => {
+                          if (el) itemRefs.current.set(item.id, el);
+                          else itemRefs.current.delete(item.id);
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          {iconPath ? (
+                            <div
+                              className="item-icon-container"
+                              style={iconColor ? {
+                                '--icon-color': iconColor,
+                                '--icon-url': `url(${iconPath})`,
+                                width: '32px', height: '32px'
+                              } as React.CSSProperties : { width: '32px', height: '32px' }}
+                            >
+                              <img
+                                src={iconPath}
+                                alt={item.name}
+                                className="item-icon"
+                                style={{ width: '32px', height: '32px' }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="item-placeholder" style={{ width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>?</div>
+                          )}
+                          <div>
+                            <p className="label small">{item.name}</p>
+                            <p className="meta">ID {item.id}</p>
+                          </div>
+                        </div>
+                        <div className="row-actions">
+                          <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
+                            -
+                          </button>
+                          <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
+                            -10
+                          </button>
+                          <span className="pill count">{itemTotals.get(item.id) ?? 0}</span>
+                          <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
+                            +
+                          </button>
+                          <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 10)}>
+                            +10
+                          </button>
+                        </div>
                       </div>
-                      <div className="row-actions">
-                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
-                          -
-                        </button>
-                        <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
-                          -10
-                        </button>
-                        <span className="pill count">{itemTotals.get(item.id) ?? 0}</span>
-                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
-                          +
-                        </button>
-                        <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 10)}>
-                          +10
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <div className="item-list">
@@ -703,11 +776,16 @@ function App() {
                     <p className="label">Current inventory</p>
                     <p className="meta">Only items you currently hold.</p>
                   </div>
-                  <span className="pill">{itemSummary.length} types</span>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <span className="pill">{itemStacks.length} stacks</span>
+                    <button className="primary mini" type="button" onClick={sortInventoryById}>
+                      Sort by ID
+                    </button>
+                  </div>
                 </div>
                 <div className="list-body">
                   <InventoryGrid
-                    items={itemSummary}
+                    items={itemStacks}
                     onItemClick={handleItemClick}
                     selectedIndex={selectedItemIndex}
                   />
