@@ -47,12 +47,13 @@ import {
   PALICO_SLOT_BYTES
 } from "./lib/types";
 import { ITEMS } from "./lib/data/items";
+import { EQUIPMENT_CATALOG, ARMOR_PIECE_TYPES, WEAPON_TYPE_LIST } from "./lib/data/equipmentCatalog";
 import "./App.css";
 import './components/InventoryGrid.css';
 import InventoryGrid from './components/InventoryGrid';
 import EquipmentGrid from './components/EquipmentGrid';
 import { getIconPath, getIconColor } from './lib/itemUtils';
-import { deriveRarityLabel, getEquipmentTypeName, getEquipmentName } from "./lib/equipmentUtils";
+import { deriveRarityLabel, getEquipmentTypeName, getEquipmentName, getEquipmentIcon, getRarityColor, rarityToLevelBits, getRarityColorFromNumber } from "./lib/equipmentUtils";
 
 type FieldKey = keyof PlayerCore;
 type TabKey = "edit" | "items" | "hunterEquip" | "palicoEquip" | "progress";
@@ -172,6 +173,9 @@ function App() {
   const [itemCountInput, setItemCountInput] = useState<number>(0);
   const [itemSearch, setItemSearch] = useState<string>("");
   const [equipSearch, setEquipSearch] = useState<string>("");
+  const [equipCategoryFilter, setEquipCategoryFilter] = useState<'all' | 'weapon' | 'armor' | 'talisman'>('all');
+  const [equipTypeFilter, setEquipTypeFilter] = useState<number>(0);
+  const [equipRarityFilter, setEquipRarityFilter] = useState<number>(0); // 0 = all rarities
   const [hexBlocks, setHexBlocks] = useState<Record<HexBlockKey, string>>(emptyHexBlocks);
   const [blockErrors, setBlockErrors] = useState<Record<HexBlockKey, string | null>>(emptyBlockErrors);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -345,6 +349,16 @@ function App() {
     return totals;
   }, [items]);
 
+  const equipmentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    hunterEquipmentEntries?.forEach((entry) => {
+      if (entry.type === 0 && entry.equipId === 0) return;
+      const key = `${entry.type}-${entry.equipId}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return counts;
+  }, [hunterEquipmentEntries]);
+
   const filledItems = useMemo(
     () =>
       items
@@ -384,6 +398,37 @@ function App() {
       return matchesQuery && !isEmpty;
     });
   }, [equipSearch, hunterEquipmentEntries]);
+
+  const filteredCatalog = useMemo(() => {
+    let results = EQUIPMENT_CATALOG;
+
+    // Filter by category (weapon, armor, talisman)
+    if (equipCategoryFilter !== 'all') {
+      results = results.filter(e => e.category === equipCategoryFilter);
+    }
+
+    // Filter by specific type (e.g., Great Sword, Head armor)
+    if (equipTypeFilter !== 0) {
+      results = results.filter(e => e.type === equipTypeFilter);
+    }
+
+    // Filter by rarity
+    if (equipRarityFilter !== 0) {
+      results = results.filter(e => e.rarity === equipRarityFilter);
+    }
+
+    // Filter by search query
+    if (equipSearch.trim()) {
+      const query = equipSearch.toLowerCase();
+      results = results.filter(e =>
+        e.name.toLowerCase().includes(query) ||
+        e.id.toString() === query ||
+        e.subcategory.toLowerCase().includes(query)
+      );
+    }
+
+    return results;
+  }, [equipCategoryFilter, equipTypeFilter, equipRarityFilter, equipSearch]);
 
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
@@ -545,6 +590,79 @@ function App() {
       deco2: 0,
       deco3: 0
     }));
+  };
+
+  const addEquipmentToBox = (type: number, equipId: number, rarity: number) => {
+    setHunterEquipmentEntries((prev) => {
+      if (!prev) return prev;
+
+      // Find first empty slot
+      const emptyIndex = prev.findIndex(
+        (entry) =>
+          entry.type === 0 &&
+          entry.equipId === 0 &&
+          entry.transmogId === 0 &&
+          entry.deco1 === 0 &&
+          entry.deco2 === 0 &&
+          entry.deco3 === 0
+      );
+
+      if (emptyIndex === -1) {
+        setError('Equipment box is full. Remove an item first.');
+        return prev;
+      }
+
+      const next = [...prev];
+      // Use the actual rarity from the database, not the level input
+      const levelBits = rarityToLevelBits(rarity);
+      next[emptyIndex] = {
+        ...next[emptyIndex],
+        type,
+        equipId,
+        transmogId: 0,
+        levelBits,
+        deco1: 0,
+        deco2: 0,
+        deco3: 0
+      };
+
+      syncHunterBox(next);
+      setSelectedEquipIndex(emptyIndex);
+      setError(null);
+      return next;
+    });
+  };
+
+  const removeEquipmentFromBox = (type: number, equipId: number) => {
+    setHunterEquipmentEntries((prev) => {
+      if (!prev) return prev;
+
+      // Find the first matching equipment piece
+      const matchIndex = prev.findIndex(
+        (entry) => entry.type === type && entry.equipId === equipId
+      );
+
+      if (matchIndex === -1) {
+        return prev; // Not found, nothing to remove
+      }
+
+      const next = [...prev];
+      // Clear this slot
+      next[matchIndex] = {
+        ...next[matchIndex],
+        type: 0,
+        equipId: 0,
+        transmogId: 0,
+        levelBits: 0,
+        deco1: 0,
+        deco2: 0,
+        deco3: 0
+      };
+
+      syncHunterBox(next);
+      setError(null);
+      return next;
+    });
   };
 
   const setSelectedEquipSlot = (slotNumber: number) => {
@@ -835,7 +953,6 @@ function App() {
                 <div className="list-head">
                   <div>
                     <p className="label">Item catalog</p>
-                    <p className="meta">All items with quick +/- controls.</p>
                   </div>
                   <span className="pill">{ITEMS.length} items</span>
                 </div>
@@ -991,35 +1108,200 @@ function App() {
   const renderHunterEquipTab = () => (
     <div className="tab-panel" data-tab="hunterEquip">
       {equipment && hunterEquipmentEntries ? (
-        <div className="subcard stack">
+        <div className="subcard">
           <div className="subcard-header">
             <div>
-              <p className="label">Hunter equipment box</p>
-              <p className="meta">Browse and edit slots using the same parsing rules as WinForms.</p>
+              <p className="label">Equipment box</p>
+              <p className="meta">
+                {filteredHunterEntries.length}/{EQUIPMENT_SLOT_COUNT} slots with equipment. Add from catalog or edit manually.
+              </p>
             </div>
-            <span className="pill">{EQUIPMENT_BOX_BYTES.toLocaleString()} bytes</span>
+            <span className="pill">{EQUIPMENT_SLOT_COUNT} slots</span>
           </div>
 
-          <div className="inline-fields">
+          <div className="item-form">
             <label className="field small full">
               <div className="field-top">
-                <span>Search slots</span>
-                <span className="meta">Slot number, type, or ID</span>
+                <span>Search equipment</span>
+                <span className="meta">Type to filter catalog and box.</span>
               </div>
               <input
                 type="text"
                 value={equipSearch}
                 onChange={(e) => setEquipSearch(e.target.value)}
-                placeholder="Head, Bow, 123..."
+                placeholder="Great Sword, Rathalos, 123..."
               />
             </label>
-          </div>
 
-          <EquipmentGrid
-            entries={filteredHunterEntries}
-            onSelect={(_, idx) => setSelectedEquipIndex(idx)}
-            selectedIndex={selectedEquipIndex}
-          />
+            <div className="item-lists">
+              {/* LEFT SIDE - Equipment Catalog */}
+              <div className="item-list">
+                <div className="list-head">
+                  <div>
+                    <p className="label">Equipment catalog</p>
+                  </div>
+                  <span className="pill">{filteredCatalog.length} items</span>
+                </div>
+
+                {/* Filter Controls */}
+                <div className="filter-controls">
+                  <select 
+                    value={equipCategoryFilter} 
+                    onChange={(e) => {
+                      setEquipCategoryFilter(e.target.value as 'all' | 'weapon' | 'armor' | 'talisman');
+                      setEquipTypeFilter(0);
+                    }}
+                  >
+                    <option value="all">All Categories</option>
+                    <option value="weapon">Weapons</option>
+                    <option value="armor">Armor</option>
+                    <option value="talisman">Talismans</option>
+                  </select>
+
+                  <select 
+                    value={equipTypeFilter} 
+                    onChange={(e) => setEquipTypeFilter(Number(e.target.value))}
+                  >
+                    <option value={0}>All Types</option>
+                    {equipCategoryFilter === 'weapon' && WEAPON_TYPE_LIST.map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                    {equipCategoryFilter === 'armor' && ARMOR_PIECE_TYPES.map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                    {equipCategoryFilter === 'all' && [
+                      ...WEAPON_TYPE_LIST.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      )),
+                      ...ARMOR_PIECE_TYPES.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))
+                    ]}
+                  </select>
+
+                  <select
+                    value={equipRarityFilter}
+                    onChange={(e) => setEquipRarityFilter(Number(e.target.value))}
+                  >
+                    <option value={0}>All Rarities</option>
+                    <option value={1}>Rare 1</option>
+                    <option value={2}>Rare 2</option>
+                    <option value={3}>Rare 3</option>
+                    <option value={4}>Rare 4</option>
+                    <option value={5}>Rare 5</option>
+                    <option value={6}>Rare 6</option>
+                    <option value={7}>Rare 7</option>
+                    <option value={8}>Rare 8</option>
+                    <option value={9}>Rare 9</option>
+                    <option value={10}>Rare 10</option>
+                  </select>
+                </div>
+
+                <div className="list-body">
+                  {filteredCatalog.map((item) => {
+                    const iconPath = getEquipmentIcon(item.type);
+                    const rarityColor = getRarityColorFromNumber(item.rarity);
+                    const equipKey = `${item.type}-${item.id}`;
+                    const count = equipmentCounts.get(equipKey) ?? 0;
+                    
+                    return (
+                      <div className="item-row" key={equipKey}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <div
+                            className="item-icon-container"
+                            style={rarityColor ? {
+                              '--icon-color': rarityColor,
+                              '--icon-url': `url(${iconPath})`,
+                              width: '32px',
+                              height: '32px'
+                            } as React.CSSProperties : { width: '32px', height: '32px' }}
+                          >
+                            <img 
+                              src={iconPath} 
+                              alt={item.subcategory} 
+                              className="item-icon"
+                              style={{ width: '32px', height: '32px' }}
+                            />
+                          </div>
+                          <div>
+                            <p className="label small">{item.name}</p>
+                            <p className="meta">{item.subcategory} • ID {item.id} • Rare {item.rarity}</p>
+                          </div>
+                        </div>
+                        <div className="row-actions">
+                          <button 
+                            className="ghost mini" 
+                            type="button"
+                            onClick={() => removeEquipmentFromBox(item.type, item.id)}
+                            disabled={count === 0}
+                          >
+                            -
+                          </button>
+                          <span className="pill count">{count}</span>
+                          <button 
+                            className="primary mini" 
+                            type="button"
+                            onClick={() => addEquipmentToBox(item.type, item.id, item.rarity)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* RIGHT SIDE - Equipment Box Grid */}
+              <div className="item-list">
+                <div className="list-head">
+                  <div>
+                    <p className="label">Current equipment box</p>
+                    <p className="meta">Only equipment you currently hold.</p>
+                  </div>
+                  <span className="pill">{filteredHunterEntries.length} pieces</span>
+                </div>
+                <div className="list-body">
+                  {filteredHunterEntries.length === 0 ? (
+                    <p className="hint">No equipment in box. Add items from the catalog on the left.</p>
+                  ) : (
+                    <div className="inventory-grid">
+                      {filteredHunterEntries.map((entry) => {
+                        const icon = getEquipmentIcon(entry.type);
+                        const name = getEquipmentName(entry.type, entry.equipId);
+                        const rarityColor = getRarityColor(entry);
+                        const isSelected = selectedEquipIndex === entry.slot - 1;
+
+                        return (
+                          <div
+                            key={entry.slot}
+                            className={`inventory-slot ${isSelected ? "selected" : ""}`}
+                            onClick={() => setSelectedEquipIndex(entry.slot - 1)}
+                            title={`${name} • ${getEquipmentTypeName(entry.type)} • Rare ${deriveRarityLabel(entry.levelBits)}`}
+                          >
+                            <div
+                              className="item-icon-container"
+                              style={rarityColor ? {
+                                '--icon-color': rarityColor,
+                                '--icon-url': `url(${icon})`
+                              } as React.CSSProperties : {}}
+                            >
+                              <img
+                                src={icon}
+                                alt={name}
+                                className="item-icon"
+                              />
+                            </div>
+                            <span className="item-count">{deriveRarityLabel(entry.levelBits)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <details className="manual-editor">
             <summary>Advanced: edit a specific equipment slot</summary>

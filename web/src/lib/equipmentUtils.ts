@@ -84,3 +84,16 @@ export const getRarityColor = (entry: HunterEquipmentEntry) => {
   const label = deriveRarityLabel(entry.levelBits);
   return RARITY_COLORS[label] ?? RARITY_COLORS["1"];
 };
+
+export const rarityToLevelBits = (rarity: number): number => {
+  // Convert rarity (1-10 or X) to levelBits
+  // Based on the deriveRarityLabel logic, it appears levelBits === rarity for 1-10
+  if (rarity <= 0) return 0;
+  if (rarity > 10) return 11; // X rarity
+  return rarity;
+};
+
+export const getRarityColorFromNumber = (rarity: number): string => {
+  const key = rarity > 10 ? "X" : rarity.toString();
+  return RARITY_COLORS[key] ?? RARITY_COLORS["1"];
+};
