@@ -72,17 +72,62 @@ export type PalicoData = {
 export type GuildCardData = {
   card: Uint8Array;
   arenaLog: Uint8Array;
+  parsed: {
+    general: {
+      name: string;
+      gcId: string;
+      playTime: number;
+    };
+    quests: {
+      villageLow: number;
+      villageHigh: number;
+      hubLow: number;
+      hubHigh: number;
+      gRank: number;
+      specialPermit: number;
+      arena: number;
+    };
+    weaponUsage: {
+      village: number[];
+      hub: number[];
+      arena: number[];
+    };
+    arenaStats: ArenaRecord[];
+  };
+};
+
+export type ArenaRecord = {
+  questIndex: number;
+  entries: {
+    time: number; // seconds
+    weapon: number; // index into ArenaWeapons/ArenaPalico
+    grade: number; // 0=S, 1=A, 2=B, 3=None
+  }[];
 };
 
 export type ShoutoutData = {
   manual: Uint8Array;
   automatic: Uint8Array;
+  parsed: {
+    manual: string[];
+    automatic: string[];
+  };
+};
+
+export type MonsterLogEntry = {
+  index: number;
+  name: string;
+  killed: number;
+  captured: number;
+  sizeSmall: number;
+  sizeLarge: number;
 };
 
 export type MonsterLogData = {
   kills: Uint8Array;
   captures: Uint8Array;
   sizes: Uint8Array;
+  parsed: MonsterLogEntry[];
 };
 
 export const ITEM_SLOT_COUNT = 2300;

@@ -469,7 +469,7 @@
 }
 
 /* Palico roster - full width section with flexible height */
-.tab-panel[data-tab="palicoEquip"] > .subcard > .item-form > .item-list .list-body {
+.tab-panel[data-tab="palicoEquip"]>.subcard>.item-form>.item-list .list-body {
   min-height: auto;
   max-height: 40vh;
 }
@@ -794,4 +794,205 @@
   .card.tall {
     grid-column: span 1;
   }
+}
+
+/* Guild Card Editor */
+.guild-card-editor .section,
+.shoutouts-editor .section,
+.monster-logs-editor .section {
+  margin-bottom: 24px;
+}
+
+.guild-card-editor h3,
+.shoutouts-editor h3,
+.monster-logs-editor h3 {
+  margin-bottom: 12px;
+  font-size: 16px;
+  color: var(--accent);
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.form-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.form-row input {
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.grid-cols-4 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.grid-cols-4 label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.weapon-usage-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  max-width: 600px;
+}
+
+.weapon-usage-grid .header-row,
+.weapon-usage-grid .weapon-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.weapon-usage-grid .header-row {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.weapon-usage-grid .weapon-name {
+  font-size: 13px;
+}
+
+.arena-records {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.arena-quest-block {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.arena-quest-block h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.arena-quest-block table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.arena-quest-block th {
+  text-align: left;
+  color: var(--muted);
+  padding: 4px;
+  font-weight: normal;
+}
+
+.arena-quest-block td {
+  padding: 4px;
+}
+
+.arena-quest-block input,
+.arena-quest-block select {
+  width: 100%;
+  padding: 4px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+/* Shoutouts Editor */
+.shoutouts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.shoutout-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.shoutout-item .index {
+  font-size: 12px;
+  color: var(--muted);
+  width: 20px;
+  text-align: right;
+}
+
+.shoutout-item input {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+/* Monster Logs Editor */
+.monster-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.monster-list .header-row,
+.monster-list .monster-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.monster-list .header-row {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  z-index: 1;
+  padding: 8px 0;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.monster-list .monster-row {
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.monster-list .name-col {
+  font-size: 13px;
+}
+
+.monster-list input {
+  width: 100%;
+  padding: 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  text-align: right;
 }

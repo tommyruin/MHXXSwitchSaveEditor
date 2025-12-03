@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { GuildCardEditor } from "./components/GuildCardEditor";
+import { ShoutoutsEditor } from "./components/ShoutoutsEditor";
+import { MonsterLogsEditor } from "./components/MonsterLogsEditor";
 import {
   assembleSave,
   detectSave,
@@ -244,10 +247,10 @@ function App() {
         entry.deco3 !== 0
     );
     setSelectedEquipIndex(firstFilled >= 0 ? firstFilled : 0);
-    
+
     const palicoEntries = parsePalicoEquipmentEntries(equipment.palico);
     setPalicoEquipmentEntries(palicoEntries);
-    
+
     setHexBlocks((prev) => ({
       ...prev,
       hunterEquip: bytesToHex(equipment.hunter),
@@ -842,7 +845,7 @@ function App() {
   ) => {
     setPalicoRosterEntries((prev) => {
       if (!prev || index < 0 || index >= prev.length) return prev;
-      
+
       // Validate and clamp values to prevent overflow
       const validatedUpdates = { ...updates };
       if (validatedUpdates.level !== undefined) {
@@ -861,7 +864,7 @@ function App() {
       if (validatedUpdates.targetPreference !== undefined) {
         validatedUpdates.targetPreference = clamp(Math.trunc(validatedUpdates.targetPreference) || 0, 0, 5);
       }
-      
+
       const next = [...prev];
       next[index] = { ...next[index], ...validatedUpdates };
       syncPalicoRoster(next);
@@ -1349,8 +1352,8 @@ function App() {
 
                 {/* Filter Controls */}
                 <div className="filter-controls">
-                  <select 
-                    value={equipCategoryFilter} 
+                  <select
+                    value={equipCategoryFilter}
                     onChange={(e) => {
                       setEquipCategoryFilter(e.target.value as 'all' | 'weapon' | 'armor' | 'talisman');
                       setEquipTypeFilter(0);
@@ -1362,8 +1365,8 @@ function App() {
                     <option value="talisman">Talismans</option>
                   </select>
 
-                  <select 
-                    value={equipTypeFilter} 
+                  <select
+                    value={equipTypeFilter}
                     onChange={(e) => setEquipTypeFilter(Number(e.target.value))}
                   >
                     <option value={0}>All Types</option>
@@ -1407,7 +1410,7 @@ function App() {
                     const rarityColor = getRarityColorFromNumber(item.rarity);
                     const equipKey = `${item.type}-${item.id}`;
                     const count = equipmentCounts.get(equipKey) ?? 0;
-                    
+
                     return (
                       <div className="item-row" key={equipKey}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1420,9 +1423,9 @@ function App() {
                               height: '32px'
                             } as React.CSSProperties : { width: '32px', height: '32px' }}
                           >
-                            <img 
-                              src={iconPath} 
-                              alt={item.subcategory} 
+                            <img
+                              src={iconPath}
+                              alt={item.subcategory}
                               className="item-icon"
                               style={{ width: '32px', height: '32px' }}
                             />
@@ -1433,8 +1436,8 @@ function App() {
                           </div>
                         </div>
                         <div className="row-actions">
-                          <button 
-                            className="ghost mini" 
+                          <button
+                            className="ghost mini"
                             type="button"
                             onClick={() => removeEquipmentFromBox(item.type, item.id)}
                             disabled={count === 0}
@@ -1442,8 +1445,8 @@ function App() {
                             -
                           </button>
                           <span className="pill count">{count}</span>
-                          <button 
-                            className="primary mini" 
+                          <button
+                            className="primary mini"
                             type="button"
                             onClick={() => addEquipmentToBox(item.type, item.id, item.rarity)}
                           >
@@ -2006,113 +2009,28 @@ function App() {
             <div className="subcard-header">
               <div>
                 <p className="label">Guild card</p>
-                <p className="meta">Arena log included—keep byte counts matched.</p>
+                <p className="meta">General info, quests, weapon usage, and arena records.</p>
               </div>
-              <span className="pill">{(guildCard.card.length + guildCard.arenaLog.length).toLocaleString()} bytes</span>
             </div>
-            {renderHexEditor(
-              "guildCard",
-              "Guild card block",
-              GUILD_CARD_BYTES,
-              (bytes) =>
-                setGuildCard((prev) =>
-                  prev
-                    ? { ...prev, card: bytes }
-                    : { card: bytes, arenaLog: new Uint8Array(ARENA_LOG_BYTES) }
-                ),
-              `${GUILD_CARD_BYTES} bytes.`
-            )}
-            {renderHexEditor(
-              "arenaLog",
-              "Arena log",
-              ARENA_LOG_BYTES,
-              (bytes) =>
-                setGuildCard((prev) =>
-                  prev
-                    ? { ...prev, arenaLog: bytes }
-                    : { card: new Uint8Array(GUILD_CARD_BYTES), arenaLog: bytes }
-                ),
-              `${ARENA_LOG_BYTES} bytes.`
-            )}
-            <div className="subcard-header">
-              <div>
-                <p className="label">Shoutouts</p>
-                <p className="meta">Manual + automatic messages.</p>
-              </div>
-              <span className="pill">{(shoutouts.manual.length + shoutouts.automatic.length).toLocaleString()} bytes</span>
-            </div>
-            {renderHexEditor(
-              "manualShoutouts",
-              "Manual shoutouts",
-              MANUAL_SHOUTOUT_BYTES,
-              (bytes) =>
-                setShoutouts((prev) =>
-                  prev
-                    ? { ...prev, manual: bytes }
-                    : { manual: bytes, automatic: new Uint8Array(AUTOMATIC_SHOUTOUT_BYTES) }
-                ),
-              `${MANUAL_SHOUTOUT_BYTES} bytes.`
-            )}
-            {renderHexEditor(
-              "automaticShoutouts",
-              "Automatic shoutouts",
-              AUTOMATIC_SHOUTOUT_BYTES,
-              (bytes) =>
-                setShoutouts((prev) =>
-                  prev
-                    ? { ...prev, automatic: bytes }
-                    : { manual: new Uint8Array(MANUAL_SHOUTOUT_BYTES), automatic: bytes }
-                ),
-              `${AUTOMATIC_SHOUTOUT_BYTES} bytes.`
-            )}
+            <GuildCardEditor data={guildCard} onChange={setGuildCard} />
           </div>
 
           <div className="subcard">
             <div className="subcard-header">
               <div>
+                <p className="label">Shoutouts</p>
+                <p className="meta">Manual and automatic chat messages.</p>
+              </div>
+            </div>
+            <ShoutoutsEditor data={shoutouts} onChange={setShoutouts} />
+
+            <div className="subcard-header">
+              <div>
                 <p className="label">Monster logs</p>
                 <p className="meta">Kills, captures, and size records.</p>
               </div>
-              <span className="pill">
-                {(monsterLogs.kills.length + monsterLogs.captures.length + monsterLogs.sizes.length).toLocaleString()} bytes
-              </span>
             </div>
-            {renderHexEditor(
-              "monsterKills",
-              "Kill log",
-              MONSTER_KILL_BYTES,
-              (bytes) =>
-                setMonsterLogs((prev) =>
-                  prev
-                    ? { ...prev, kills: bytes }
-                    : { kills: bytes, captures: new Uint8Array(MONSTER_CAPTURE_BYTES), sizes: new Uint8Array(MONSTER_SIZE_BYTES) }
-                ),
-              `${MONSTER_KILL_BYTES} bytes.`
-            )}
-            {renderHexEditor(
-              "monsterCaptures",
-              "Capture log",
-              MONSTER_CAPTURE_BYTES,
-              (bytes) =>
-                setMonsterLogs((prev) =>
-                  prev
-                    ? { ...prev, captures: bytes }
-                    : { kills: new Uint8Array(MONSTER_KILL_BYTES), captures: bytes, sizes: new Uint8Array(MONSTER_SIZE_BYTES) }
-                ),
-              `${MONSTER_CAPTURE_BYTES} bytes.`
-            )}
-            {renderHexEditor(
-              "monsterSizes",
-              "Size log",
-              MONSTER_SIZE_BYTES,
-              (bytes) =>
-                setMonsterLogs((prev) =>
-                  prev
-                    ? { ...prev, sizes: bytes }
-                    : { kills: new Uint8Array(MONSTER_KILL_BYTES), captures: new Uint8Array(MONSTER_CAPTURE_BYTES), sizes: bytes }
-                ),
-              `${MONSTER_SIZE_BYTES} bytes.`
-            )}
+            <MonsterLogsEditor data={monsterLogs} onChange={setMonsterLogs} />
           </div>
         </div>
       ) : (

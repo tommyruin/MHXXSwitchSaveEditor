@@ -31,8 +31,17 @@ import {
   GuildCardData,
   ShoutoutData,
   MonsterLogData,
-  LoadedSave
+  LoadedSave,
+  ArenaRecord,
+  MonsterLogEntry
 } from "./types";
+import {
+  HUNT_WEAPONS,
+  MONSTER_HUNT_NAMES,
+  GRUDGE_MATCHES,
+  ARENA_WEAPONS,
+  ARENA_PALICO
+} from "./gameConstants";
 
 const BASE_SAVE_SIZE = 4726152;
 const SWITCH_HEADER_SIZE = 36;
@@ -554,9 +563,13 @@ export const parseGuildCard = (
   );
   const base = getSlotOffset(view, slot);
 
+  const card = copyBlock(payload, base + OFFSETS.GUILCARD_OFFSET, GUILD_CARD_BYTES);
+  const arenaLog = copyBlock(payload, base + OFFSETS.GUILDCARD_ARENA_LOG_OFFSET, ARENA_LOG_BYTES);
+
   return {
-    card: copyBlock(payload, base + OFFSETS.GUILCARD_OFFSET, GUILD_CARD_BYTES),
-    arenaLog: copyBlock(payload, base + OFFSETS.GUILDCARD_ARENA_LOG_OFFSET, ARENA_LOG_BYTES)
+    card,
+    arenaLog,
+    parsed: decodeGuildCard(card, arenaLog)
   };
 };
 
@@ -565,6 +578,12 @@ export const writeGuildCard = (
   slotNumber: number,
   guildCard: GuildCardData
 ): Uint8Array => {
+  const encoded = encodeGuildCard(guildCard.parsed);
+
+  // Update the raw buffers in the object to match the parsed data
+  guildCard.card = encoded.card;
+  guildCard.arenaLog = encoded.arenaLog;
+
   if (guildCard.card.length !== GUILD_CARD_BYTES) {
     throw new Error(`Guild card block must be ${GUILD_CARD_BYTES} bytes.`);
   }
@@ -595,9 +614,13 @@ export const parseShoutouts = (
   );
   const base = getSlotOffset(view, slot);
 
+  const manual = copyBlock(payload, base + OFFSETS.MANUAL_SHOUTOUT_OFFSETS, MANUAL_SHOUTOUT_BYTES);
+  const automatic = copyBlock(payload, base + OFFSETS.AUTOMATIC_SHOUTOUT_OFFSETS, AUTOMATIC_SHOUTOUT_BYTES);
+
   return {
-    manual: copyBlock(payload, base + OFFSETS.MANUAL_SHOUTOUT_OFFSETS, MANUAL_SHOUTOUT_BYTES),
-    automatic: copyBlock(payload, base + OFFSETS.AUTOMATIC_SHOUTOUT_OFFSETS, AUTOMATIC_SHOUTOUT_BYTES)
+    manual,
+    automatic,
+    parsed: decodeShoutouts(manual, automatic)
   };
 };
 
@@ -606,6 +629,10 @@ export const writeShoutouts = (
   slotNumber: number,
   shoutouts: ShoutoutData
 ): Uint8Array => {
+  const encoded = encodeShoutouts(shoutouts.parsed);
+  shoutouts.manual = encoded.manual;
+  shoutouts.automatic = encoded.automatic;
+
   if (shoutouts.manual.length !== MANUAL_SHOUTOUT_BYTES) {
     throw new Error(`Manual shoutouts block must be ${MANUAL_SHOUTOUT_BYTES} bytes.`);
   }
@@ -636,10 +663,15 @@ export const parseMonsterLogs = (
   );
   const base = getSlotOffset(view, slot);
 
+  const kills = copyBlock(payload, base + OFFSETS.MONSTERHUNT_OFFSETS, MONSTER_KILL_BYTES);
+  const captures = copyBlock(payload, base + OFFSETS.MONSTERCAPTURE_OFFSETS, MONSTER_CAPTURE_BYTES);
+  const sizes = copyBlock(payload, base + OFFSETS.MONSTERSIZE_OFFSETS, MONSTER_SIZE_BYTES);
+
   return {
-    kills: copyBlock(payload, base + OFFSETS.MONSTERHUNT_OFFSETS, MONSTER_KILL_BYTES),
-    captures: copyBlock(payload, base + OFFSETS.MONSTERCAPTURE_OFFSETS, MONSTER_CAPTURE_BYTES),
-    sizes: copyBlock(payload, base + OFFSETS.MONSTERSIZE_OFFSETS, MONSTER_SIZE_BYTES)
+    kills,
+    captures,
+    sizes,
+    parsed: decodeMonsterLogs(kills, captures, sizes)
   };
 };
 
@@ -648,6 +680,11 @@ export const writeMonsterLogs = (
   slotNumber: number,
   logs: MonsterLogData
 ): Uint8Array => {
+  const encoded = encodeMonsterLogs(logs.parsed);
+  logs.kills = encoded.kills;
+  logs.captures = encoded.captures;
+  logs.sizes = encoded.sizes;
+
   if (logs.kills.length !== MONSTER_KILL_BYTES) {
     throw new Error(`Monster kill log must be ${MONSTER_KILL_BYTES} bytes.`);
   }
@@ -686,4 +723,215 @@ export const formatPlayTime = (seconds: number) => {
   const secs = remainder % 60;
   const pad = (v: number) => v.toString().padStart(2, "0");
   return `${days}.${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
+};
+
+// --- Helper Functions ---
+
+const decodeGuildCard = (card: Uint8Array, arenaLog: Uint8Array): GuildCardData["parsed"] => {
+  const view = new DataView(card.buffer, card.byteOffset, card.byteLength);
+
+  // General
+  const nameBytes = card.slice(0, 12);
+  // C# uses Encoding.Unicode (UTF-16LE)
+  // We need to decode UTF-16LE. TextDecoder("utf-16le") works.
+  const utf16Decoder = new TextDecoder("utf-16le");
+  const name = utf16Decoder.decode(nameBytes).replace(/\0+$/, "");
+
+  let gcId = "";
+  for (let i = 0x8b0; i < 0x8b8; i++) {
+    gcId += card[i].toString(16).padStart(2, "0").toUpperCase();
+  }
+
+  const playTime = view.getInt32(0x914, true);
+
+  // Quests
+  const quests = {
+    villageLow: view.getInt16(0x85e, true),
+    villageHigh: view.getInt16(0x860, true),
+    hubLow: view.getInt16(0x862, true),
+    hubHigh: view.getInt16(0x864, true),
+    gRank: view.getInt16(0x866, true),
+    specialPermit: view.getInt16(0x868, true),
+    arena: view.getInt16(0x86a, true)
+  };
+
+  // Weapon Usage
+  const weaponUsage = {
+    village: [] as number[],
+    hub: [] as number[],
+    arena: [] as number[]
+  };
+
+  for (let i = 0; i < HUNT_WEAPONS.length; i++) {
+    weaponUsage.village.push(view.getInt16(0x8ba + i * 2, true));
+    weaponUsage.hub.push(view.getInt16(0x8d8 + i * 2, true));
+    weaponUsage.arena.push(view.getInt16(0x8f6 + i * 2, true));
+  }
+
+  // Arena Stats
+  const arenaStats: ArenaRecord[] = [];
+  const arenaView = new DataView(arenaLog.buffer, arenaLog.byteOffset, arenaLog.byteLength);
+
+  for (let i = 0; i < GRUDGE_MATCHES.length; i++) {
+    const entries = [];
+    for (let j = 0; j < 5; j++) {
+      const offset = i * 20 + j * 4;
+      const time = arenaView.getUint16(offset, true);
+      const flags = arenaView.getUint16(offset + 2, true);
+      const grade = flags & 0x7; // bits 0-2
+      const weapon = (flags >> 10) & 0xF; // bits 10-13
+      entries.push({ time, weapon, grade });
+    }
+    arenaStats.push({ questIndex: i, entries });
+  }
+
+  return {
+    general: { name, gcId, playTime },
+    quests,
+    weaponUsage,
+    arenaStats
+  };
+};
+
+const encodeGuildCard = (parsed: GuildCardData["parsed"]): { card: Uint8Array; arenaLog: Uint8Array } => {
+  const card = new Uint8Array(GUILD_CARD_BYTES);
+  const view = new DataView(card.buffer);
+
+  // General
+  // Name (UTF-16LE)
+  const nameBuffer = new Uint8Array(12);
+  // JS strings are UTF-16, but we need to encode to bytes.
+  // We can write char codes.
+  for (let i = 0; i < 6; i++) { // 6 chars max for 12 bytes? Or 12 bytes = 6 chars?
+    // Wait, MHXX names are usually up to 12 bytes.
+    // If we just write charCodeAt, it should be fine for basic chars.
+    // But for proper UTF-16LE encoding:
+    if (i < parsed.general.name.length) {
+      const code = parsed.general.name.charCodeAt(i);
+      view.setUint16(i * 2, code, true);
+    } else {
+      view.setUint16(i * 2, 0, true);
+    }
+  }
+
+  // GC ID
+  for (let i = 0; i < 8; i++) {
+    const byteVal = parseInt(parsed.general.gcId.substr(i * 2, 2), 16) || 0;
+    card[0x8b0 + i] = byteVal;
+  }
+
+  view.setInt32(0x914, parsed.general.playTime, true);
+
+  // Quests
+  view.setInt16(0x85e, parsed.quests.villageLow, true);
+  view.setInt16(0x860, parsed.quests.villageHigh, true);
+  view.setInt16(0x862, parsed.quests.hubLow, true);
+  view.setInt16(0x864, parsed.quests.hubHigh, true);
+  view.setInt16(0x866, parsed.quests.gRank, true);
+  view.setInt16(0x868, parsed.quests.specialPermit, true);
+  view.setInt16(0x86a, parsed.quests.arena, true);
+
+  // Weapon Usage
+  for (let i = 0; i < HUNT_WEAPONS.length; i++) {
+    view.setInt16(0x8ba + i * 2, parsed.weaponUsage.village[i] || 0, true);
+    view.setInt16(0x8d8 + i * 2, parsed.weaponUsage.hub[i] || 0, true);
+    view.setInt16(0x8f6 + i * 2, parsed.weaponUsage.arena[i] || 0, true);
+  }
+
+  // Arena Log
+  const arenaLog = new Uint8Array(ARENA_LOG_BYTES);
+  const arenaView = new DataView(arenaLog.buffer);
+
+  parsed.arenaStats.forEach((record, i) => {
+    record.entries.forEach((entry, j) => {
+      const offset = i * 20 + j * 4;
+      arenaView.setUint16(offset, entry.time, true);
+      let flags = entry.grade & 0x7;
+      flags |= (entry.weapon & 0xF) << 10;
+      arenaView.setUint16(offset + 2, flags, true);
+    });
+  });
+
+  return { card, arenaLog };
+};
+
+const decodeShoutouts = (manual: Uint8Array, automatic: Uint8Array): ShoutoutData["parsed"] => {
+  const manualShoutouts: string[] = [];
+  const automaticShoutouts: string[] = [];
+  const utf8Decoder = new TextDecoder("utf-8");
+
+  for (let i = 0; i < 48; i++) { // TOTAL_MANUAL_SHOUTOUTS
+    const start = i * 60;
+    const slice = manual.slice(start, start + 60);
+    manualShoutouts.push(utf8Decoder.decode(slice).replace(/\0+$/, ""));
+  }
+
+  for (let i = 0; i < 27; i++) { // TOTAL_AUTOMATIC_SHOUTOUTS
+    const start = i * 60;
+    const slice = automatic.slice(start, start + 60);
+    automaticShoutouts.push(utf8Decoder.decode(slice).replace(/\0+$/, ""));
+  }
+
+  return { manual: manualShoutouts, automatic: automaticShoutouts };
+};
+
+const encodeShoutouts = (parsed: ShoutoutData["parsed"]): { manual: Uint8Array; automatic: Uint8Array } => {
+  const manual = new Uint8Array(MANUAL_SHOUTOUT_BYTES);
+  const automatic = new Uint8Array(AUTOMATIC_SHOUTOUT_BYTES);
+  const utf8Encoder = new TextEncoder();
+
+  parsed.manual.forEach((text, i) => {
+    const encoded = utf8Encoder.encode(text);
+    const slice = new Uint8Array(60);
+    slice.set(encoded.slice(0, 60));
+    manual.set(slice, i * 60);
+  });
+
+  parsed.automatic.forEach((text, i) => {
+    const encoded = utf8Encoder.encode(text);
+    const slice = new Uint8Array(60);
+    slice.set(encoded.slice(0, 60));
+    automatic.set(slice, i * 60);
+  });
+
+  return { manual, automatic };
+};
+
+const decodeMonsterLogs = (kills: Uint8Array, captures: Uint8Array, sizes: Uint8Array): MonsterLogEntry[] => {
+  const entries: MonsterLogEntry[] = [];
+  const killsView = new DataView(kills.buffer, kills.byteOffset, kills.byteLength);
+  const capturesView = new DataView(captures.buffer, captures.byteOffset, captures.byteLength);
+  const sizesView = new DataView(sizes.buffer, sizes.byteOffset, sizes.byteLength);
+
+  for (let i = 0; i < MONSTER_HUNT_NAMES.length; i++) {
+    entries.push({
+      index: i,
+      name: MONSTER_HUNT_NAMES[i],
+      killed: killsView.getInt16(i * 2, true),
+      captured: capturesView.getInt16(i * 2, true),
+      sizeSmall: sizesView.getUint16(i * 4, true),
+      sizeLarge: sizesView.getUint16(i * 4 + 2, true)
+    });
+  }
+  return entries;
+};
+
+const encodeMonsterLogs = (parsed: MonsterLogEntry[]): { kills: Uint8Array; captures: Uint8Array; sizes: Uint8Array } => {
+  const kills = new Uint8Array(MONSTER_KILL_BYTES);
+  const captures = new Uint8Array(MONSTER_CAPTURE_BYTES);
+  const sizes = new Uint8Array(MONSTER_SIZE_BYTES);
+
+  const killsView = new DataView(kills.buffer);
+  const capturesView = new DataView(captures.buffer);
+  const sizesView = new DataView(sizes.buffer);
+
+  parsed.forEach((entry) => {
+    const i = entry.index;
+    killsView.setInt16(i * 2, entry.killed, true);
+    capturesView.setInt16(i * 2, entry.captured, true);
+    sizesView.setUint16(i * 4, entry.sizeSmall, true);
+    sizesView.setUint16(i * 4 + 2, entry.sizeLarge, true);
+  });
+
+  return { kills, captures, sizes };
 };
