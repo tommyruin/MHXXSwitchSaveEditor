@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text;
 using System.Windows.Forms;
 using MHXXSaveEditor.Data;
@@ -17,19 +17,90 @@ namespace MHXXSaveEditor.Forms
             LoadAutomaticShoutouts();
         }
 
+        /// <summary>
+        /// Parse shoutouts from a byte array as consecutive null-terminated strings.
+        /// Strings are stored within 60-byte conceptual slots but can span slot boundaries.
+        /// </summary>
+        private string[] ParseShoutouts(byte[] data, int count)
+        {
+            string[] result = new string[count];
+            int pos = 0;
+            const int SLOT_SIZE = 60;
+            
+            for (int i = 0; i < count; i++)
+            {
+                int slotStart = i * SLOT_SIZE;
+                int slotEnd = slotStart + SLOT_SIZE;
+                
+                // Skip leading nulls within the current slot boundary
+                while (pos < data.Length && pos < slotEnd && data[pos] == 0)
+                {
+                    pos++;
+                }
+                
+                if (pos >= data.Length || pos >= slotEnd)
+                {
+                    // No text found in this slot
+                    result[i] = "";
+                    pos = slotEnd;
+                    continue;
+                }
+                
+                // Find next null terminator (can extend beyond slot boundary)
+                int nullPos = Array.IndexOf(data, (byte)0, pos);
+                if (nullPos == -1)
+                {
+                    nullPos = data.Length;
+                }
+                
+                // Decode the string
+                int length = nullPos - pos;
+                result[i] = Encoding.UTF8.GetString(data, pos, length);
+                pos = nullPos + 1;
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Encode shoutouts into a byte array as consecutive null-terminated strings.
+        /// </summary>
+        private byte[] EncodeShoutouts(string[] shoutouts, int bufferSize)
+        {
+            byte[] result = new byte[bufferSize];
+            int pos = 0;
+            
+            foreach (string text in shoutouts)
+            {
+                byte[] encoded = Encoding.UTF8.GetBytes(text);
+                
+                // Check if we have enough space (text + null terminator)
+                if (pos + encoded.Length + 1 > result.Length)
+                {
+                    // Not enough space, stop here
+                    break;
+                }
+                
+                Array.Copy(encoded, 0, result, pos, encoded.Length);
+                pos += encoded.Length;
+                result[pos++] = 0; // null terminator
+            }
+            
+            return result;
+        }
+
         public void LoadManualShoutouts()
         {
             listViewManualShoutouts.Items.Clear();
-            string shoutOut;
-            for (int a = 0; a < Constants.TOTAL_MANUAL_SHOUTOUTS; a++) // 24 manual shoutouts
+            
+            // Parse shoutouts as consecutive null-terminated strings
+            string[] shoutouts = ParseShoutouts(MainForm.player.ManualShoutouts, Constants.TOTAL_MANUAL_SHOUTOUTS);
+            
+            for (int a = 0; a < shoutouts.Length; a++)
             {
-                byte[] theShoutout = new byte[60];
-                Array.Copy(MainForm.player.ManualShoutouts, a * Constants.SIZEOF_PER_SHOUTOUT, theShoutout, 0, Constants.SIZEOF_PER_SHOUTOUT);
-                shoutOut = Encoding.UTF8.GetString(theShoutout);
-
                 string[] arr = new string[2];
                 arr[0] = (a + 1).ToString();
-                arr[1] = shoutOut;
+                arr[1] = shoutouts[a];
                 ListViewItem sht = new ListViewItem(arr);
                 listViewManualShoutouts.Items.Add(sht);
             }
@@ -40,16 +111,15 @@ namespace MHXXSaveEditor.Forms
         public void LoadAutomaticShoutouts()
         {
             listViewAutomaticShoutouts.Items.Clear();
-            string shoutOut;
-            for (int a = 0; a < Constants.TOTAL_AUTOMATIC_SHOUTOUTS; a++) // 24 manual shoutouts
+            
+            // Parse shoutouts as consecutive null-terminated strings
+            string[] shoutouts = ParseShoutouts(MainForm.player.AutomaticShoutouts, Constants.TOTAL_AUTOMATIC_SHOUTOUTS);
+            
+            for (int a = 0; a < shoutouts.Length; a++)
             {
-                byte[] theShoutout = new byte[60];
-                Array.Copy(MainForm.player.AutomaticShoutouts, a * Constants.SIZEOF_PER_SHOUTOUT, theShoutout, 0, Constants.SIZEOF_PER_SHOUTOUT);
-                shoutOut = Encoding.UTF8.GetString(theShoutout);
-
                 string[] arr = new string[2];
                 arr[0] = (a + 1).ToString();
-                arr[1] = shoutOut;
+                arr[1] = shoutouts[a];
                 ListViewItem sht = new ListViewItem(arr);
                 listViewAutomaticShoutouts.Items.Add(sht);
             }
@@ -118,11 +188,16 @@ namespace MHXXSaveEditor.Forms
         {
             int selectedShoutout = Convert.ToInt32(listViewManualShoutouts.SelectedItems[0].SubItems[0].Text) - 1;
 
-            byte[] toTransfer = new byte[60];
-            byte[] theShoutout = Encoding.UTF8.GetBytes(textBoxManualShoutouts.Text);
-            var startAt = toTransfer.Length - theShoutout.Length;
-            Buffer.BlockCopy(theShoutout, 0, toTransfer, 0, theShoutout.Length);
-            Array.Copy(toTransfer, 0, MainForm.player.ManualShoutouts, selectedShoutout * Constants.SIZEOF_PER_SHOUTOUT, Constants.SIZEOF_PER_SHOUTOUT);
+            // Parse all existing shoutouts
+            string[] shoutouts = ParseShoutouts(MainForm.player.ManualShoutouts, Constants.TOTAL_MANUAL_SHOUTOUTS);
+            
+            // Update the selected one
+            shoutouts[selectedShoutout] = textBoxManualShoutouts.Text;
+            
+            // Re-encode all shoutouts
+            MainForm.player.ManualShoutouts = EncodeShoutouts(shoutouts, Constants.SIZEOF_MANUAL_SHOUTOUTS);
+            
+            // Update the list view
             listViewManualShoutouts.SelectedItems[0].SubItems[1].Text = textBoxManualShoutouts.Text;
             MessageBox.Show("Shoutout has been set");
         }
@@ -131,11 +206,16 @@ namespace MHXXSaveEditor.Forms
         {
             int selectedShoutout = Convert.ToInt32(listViewAutomaticShoutouts.SelectedItems[0].SubItems[0].Text) - 1;
 
-            byte[] toTransfer = new byte[60];
-            byte[] theShoutout = Encoding.UTF8.GetBytes(textBoxAutomaticShoutouts.Text);
-            var startAt = toTransfer.Length - theShoutout.Length;
-            Buffer.BlockCopy(theShoutout, 0, toTransfer, 0, theShoutout.Length);
-            Array.Copy(toTransfer, 0, MainForm.player.AutomaticShoutouts, selectedShoutout * Constants.SIZEOF_PER_SHOUTOUT, Constants.SIZEOF_PER_SHOUTOUT);
+            // Parse all existing shoutouts
+            string[] shoutouts = ParseShoutouts(MainForm.player.AutomaticShoutouts, Constants.TOTAL_AUTOMATIC_SHOUTOUTS);
+            
+            // Update the selected one
+            shoutouts[selectedShoutout] = textBoxAutomaticShoutouts.Text;
+            
+            // Re-encode all shoutouts
+            MainForm.player.AutomaticShoutouts = EncodeShoutouts(shoutouts, Constants.SIZEOF_AUTOMATIC_SHOUTOUTS);
+            
+            // Update the list view
             listViewAutomaticShoutouts.SelectedItems[0].SubItems[1].Text = textBoxAutomaticShoutouts.Text;
             MessageBox.Show("Shoutout has been set");
         }

@@ -614,13 +614,19 @@ export const parseShoutouts = (
   );
   const base = getSlotOffset(view, slot);
 
+  // Read documented sizes for the raw buffers
   const manual = copyBlock(payload, base + OFFSETS.MANUAL_SHOUTOUT_OFFSETS, MANUAL_SHOUTOUT_BYTES);
   const automatic = copyBlock(payload, base + OFFSETS.AUTOMATIC_SHOUTOUT_OFFSETS, AUTOMATIC_SHOUTOUT_BYTES);
+
+  // For parsing, read extra bytes to handle strings that span beyond slot boundaries
+  // Add 100 bytes buffer to catch overflow strings
+  const manualWithOverflow = copyBlock(payload, base + OFFSETS.MANUAL_SHOUTOUT_OFFSETS, Math.min(MANUAL_SHOUTOUT_BYTES + 100, payload.length - (base + OFFSETS.MANUAL_SHOUTOUT_OFFSETS)));
+  const automaticWithOverflow = copyBlock(payload, base + OFFSETS.AUTOMATIC_SHOUTOUT_OFFSETS, Math.min(AUTOMATIC_SHOUTOUT_BYTES + 100, payload.length - (base + OFFSETS.AUTOMATIC_SHOUTOUT_OFFSETS)));
 
   return {
     manual,
     automatic,
-    parsed: decodeShoutouts(manual, automatic)
+    parsed: decodeShoutouts(manualWithOverflow, automaticWithOverflow)
   };
 };
 
@@ -858,18 +864,69 @@ const encodeGuildCard = (parsed: GuildCardData["parsed"]): { card: Uint8Array; a
 const decodeShoutouts = (manual: Uint8Array, automatic: Uint8Array): ShoutoutData["parsed"] => {
   const manualShoutouts: string[] = [];
   const automaticShoutouts: string[] = [];
-  const utf8Decoder = new TextDecoder("utf-8");
+  const decoder = new TextDecoder("utf-8");
 
-  for (let i = 0; i < 48; i++) { // TOTAL_MANUAL_SHOUTOUTS
-    const start = i * 60;
-    const slice = manual.slice(start, start + 60);
-    manualShoutouts.push(utf8Decoder.decode(slice).replace(/\0+$/, ""));
+  // Manual shoutouts: 48 slots of 60 bytes each, containing null-terminated strings
+  // Strings are stored consecutively within the buffer and can span slot boundaries
+  const SLOT_SIZE = 60;
+  let pos = 0;
+  
+  for (let i = 0; i < 48; i++) {
+    const slotStart = i * SLOT_SIZE;
+    const slotEnd = slotStart + SLOT_SIZE;
+    
+    // Skip leading nulls within the current slot boundary
+    while (pos < manual.length && pos < slotEnd && manual[pos] === 0) {
+      pos++;
+    }
+    
+    if (pos >= manual.length || pos >= slotEnd) {
+      // No text found in this slot
+      manualShoutouts.push("");
+      pos = slotEnd;
+      continue;
+    }
+    
+    // Find the null terminator
+    let nullPos = manual.indexOf(0, pos);
+    if (nullPos === -1) {
+      nullPos = manual.length;
+    }
+    
+    // Decode the string
+    const text = decoder.decode(manual.slice(pos, nullPos));
+    manualShoutouts.push(text);
+    pos = nullPos + 1;
   }
 
-  for (let i = 0; i < 27; i++) { // TOTAL_AUTOMATIC_SHOUTOUTS
-    const start = i * 60;
-    const slice = automatic.slice(start, start + 60);
-    automaticShoutouts.push(utf8Decoder.decode(slice).replace(/\0+$/, ""));
+  // Automatic shoutouts: 27 slots of 60 bytes each
+  pos = 0;
+  for (let i = 0; i < 27; i++) {
+    const slotStart = i * SLOT_SIZE;
+    const slotEnd = slotStart + SLOT_SIZE;
+    
+    // Skip leading nulls within the current slot boundary
+    while (pos < automatic.length && pos < slotEnd && automatic[pos] === 0) {
+      pos++;
+    }
+    
+    if (pos >= automatic.length || pos >= slotEnd) {
+      // No text found in this slot
+      automaticShoutouts.push("");
+      pos = slotEnd;
+      continue;
+    }
+    
+    // Find the null terminator
+    let nullPos = automatic.indexOf(0, pos);
+    if (nullPos === -1) {
+      nullPos = automatic.length;
+    }
+    
+    // Decode the string
+    const text = decoder.decode(automatic.slice(pos, nullPos));
+    automaticShoutouts.push(text);
+    pos = nullPos + 1;
   }
 
   return { manual: manualShoutouts, automatic: automaticShoutouts };
@@ -880,19 +937,37 @@ const encodeShoutouts = (parsed: ShoutoutData["parsed"]): { manual: Uint8Array; 
   const automatic = new Uint8Array(AUTOMATIC_SHOUTOUT_BYTES);
   const utf8Encoder = new TextEncoder();
 
-  parsed.manual.forEach((text, i) => {
+  // Manual shoutouts: Write as consecutive null-terminated strings
+  let pos = 0;
+  for (const text of parsed.manual) {
     const encoded = utf8Encoder.encode(text);
-    const slice = new Uint8Array(60);
-    slice.set(encoded.slice(0, 60));
-    manual.set(slice, i * 60);
-  });
+    
+    // Check if we have enough space (text + null terminator)
+    if (pos + encoded.length + 1 > manual.length) {
+      console.warn(`Manual shoutout data exceeds ${MANUAL_SHOUTOUT_BYTES} bytes. Truncating.`);
+      break;
+    }
+    
+    manual.set(encoded, pos);
+    pos += encoded.length;
+    manual[pos++] = 0; // null terminator
+  }
 
-  parsed.automatic.forEach((text, i) => {
+  // Automatic shoutouts: Write as consecutive null-terminated strings
+  pos = 0;
+  for (const text of parsed.automatic) {
     const encoded = utf8Encoder.encode(text);
-    const slice = new Uint8Array(60);
-    slice.set(encoded.slice(0, 60));
-    automatic.set(slice, i * 60);
-  });
+    
+    // Check if we have enough space (text + null terminator)
+    if (pos + encoded.length + 1 > automatic.length) {
+      console.warn(`Automatic shoutout data exceeds ${AUTOMATIC_SHOUTOUT_BYTES} bytes. Truncating.`);
+      break;
+    }
+    
+    automatic.set(encoded, pos);
+    pos += encoded.length;
+    automatic[pos++] = 0; // null terminator
+  }
 
   return { manual, automatic };
 };

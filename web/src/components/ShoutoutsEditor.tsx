@@ -13,17 +13,24 @@ export const ShoutoutsEditor: React.FC<ShoutoutsEditorProps> = ({ data, onChange
         return <div className="hint">Shoutouts data not available.</div>;
     }
 
+    // Helper to sanitize display value - remove any embedded null bytes for display
+    const sanitizeForDisplay = (text: string): string => {
+        return text.replace(/\0/g, '');
+    };
+
     const handleManualChange = (index: number, value: string) => {
         if (!parsed.manual) return;
         const newParsed = { ...parsed };
-        newParsed.manual[index] = value;
+        // Remove any null bytes from user input
+        newParsed.manual[index] = value.replace(/\0/g, '');
         onChange({ ...data, parsed: newParsed });
     };
 
     const handleAutomaticChange = (index: number, value: string) => {
         if (!parsed.automatic) return;
         const newParsed = { ...parsed };
-        newParsed.automatic[index] = value;
+        // Remove any null bytes from user input
+        newParsed.automatic[index] = value.replace(/\0/g, '');
         onChange({ ...data, parsed: newParsed });
     };
 
@@ -31,32 +38,40 @@ export const ShoutoutsEditor: React.FC<ShoutoutsEditorProps> = ({ data, onChange
         <div className="shoutouts-editor">
             <div className="section">
                 <h3>Manual Shoutouts</h3>
-                <div className="shoutouts-grid">
+                <div className="shoutouts-list">
                     {parsed.manual.map((text, i) => (
-                        <div key={`manual-${i}`} className="shoutout-item">
-                            <span className="index">{i + 1}</span>
+                        <label key={`manual-${i}`} className="field">
+                            <div className="field-top">
+                                <span>#{i + 1}</span>
+                            </div>
                             <input
                                 type="text"
-                                value={text}
+                                maxLength={60}
+                                value={sanitizeForDisplay(text)}
                                 onChange={(e) => handleManualChange(i, e.target.value)}
+                                placeholder={`Manual shoutout ${i + 1}`}
                             />
-                        </div>
+                        </label>
                     ))}
                 </div>
             </div>
 
             <div className="section">
                 <h3>Automatic Shoutouts</h3>
-                <div className="shoutouts-grid">
+                <div className="shoutouts-list">
                     {parsed.automatic.map((text, i) => (
-                        <div key={`auto-${i}`} className="shoutout-item">
-                            <span className="index">{i + 1}</span>
+                        <label key={`auto-${i}`} className="field">
+                            <div className="field-top">
+                                <span>#{i + 1}</span>
+                            </div>
                             <input
                                 type="text"
-                                value={text}
+                                maxLength={60}
+                                value={sanitizeForDisplay(text)}
                                 onChange={(e) => handleAutomaticChange(i, e.target.value)}
+                                placeholder={`Automatic shoutout ${i + 1}`}
                             />
-                        </div>
+                        </label>
                     ))}
                 </div>
             </div>
