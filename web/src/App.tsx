@@ -477,7 +477,12 @@ function App() {
         }
       }
 
-      const fillOrder = [...reusableSlots, ...emptySlots];
+      // For new items, use empty slots from the end (reverse order) to avoid auto-sorting to the beginning
+      // For existing items, reuse their original slots first
+      const fillOrder = reusableSlots.length > 0
+        ? [...reusableSlots, ...emptySlots]
+        : [...emptySlots].reverse();
+
       let remaining = desired;
       for (const slot of fillOrder) {
         if (remaining <= 0) break;
@@ -751,11 +756,11 @@ function App() {
                           </div>
                         </div>
                         <div className="row-actions">
-                          <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
-                            -
-                          </button>
                           <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -10)}>
                             -10
+                          </button>
+                          <button className="ghost mini" type="button" onClick={() => adjustItemTotal(item.id, -1)}>
+                            -
                           </button>
                           <span className="pill count">{itemTotals.get(item.id) ?? 0}</span>
                           <button className="primary mini" type="button" onClick={() => adjustItemTotal(item.id, 1)}>
