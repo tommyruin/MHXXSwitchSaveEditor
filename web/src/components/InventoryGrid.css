@@ -52,13 +52,34 @@
 }
 
 /* Use background color with multiply blend mode for colored icons */
-.item-icon-container[style*="--icon-color"] {
+/* Use pseudo-element for coloring to preserve icon details */
+.item-icon-container[style*="--icon-color"]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
   background-color: var(--icon-color);
-  border-radius: 2px;
+  -webkit-mask-image: var(--icon-url);
+  mask-image: var(--icon-url);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+
+.item-icon-container[style*="--icon-color"] {
+  /* Reset background from previous attempt */
+  background-color: transparent;
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .item-icon-container[style*="--icon-color"] .item-icon {
-  mix-blend-mode: multiply;
+  /* Reset blend mode */
+  mix-blend-mode: normal;
 }
 
 .item-count {

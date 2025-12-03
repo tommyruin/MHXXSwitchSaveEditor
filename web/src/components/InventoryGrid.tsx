@@ -72,7 +72,8 @@ const InventoryGrid: React.FC<InventoryGridProps> = ({ items, onItemClick, selec
                             <div
                                 className="item-icon-container"
                                 style={iconColor ? {
-                                    '--icon-color': iconColor
+                                    '--icon-color': iconColor,
+                                    '--icon-url': `url(${iconPath})`
                                 } as React.CSSProperties : {}}
                             >
                                 <img
