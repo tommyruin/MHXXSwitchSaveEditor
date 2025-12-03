@@ -10,10 +10,12 @@ import {
   parsePalicoes,
   parsePlayer,
   parseShoutouts,
+  parseHunterEquipmentEntries,
   writeEquipmentBoxes,
   writeGuildCard,
   writeItemBox,
   writeMonsterLogs,
+  writeHunterEquipmentEntries,
   writePalicoes,
   writePlayer,
   writeShoutouts
@@ -21,6 +23,7 @@ import {
 import {
   EquipmentBoxes,
   GuildCardData,
+  HunterEquipmentEntry,
   ItemSlot,
   LoadedSave,
   MonsterLogData,
@@ -40,13 +43,16 @@ import {
   ITEM_COUNT_BITS,
   ITEM_ID_BITS,
   ITEM_SLOT_COUNT,
+  EQUIPMENT_SLOT_COUNT,
   PALICO_SLOT_BYTES
 } from "./lib/types";
 import { ITEMS } from "./lib/data/items";
 import "./App.css";
 import './components/InventoryGrid.css';
 import InventoryGrid from './components/InventoryGrid';
+import EquipmentGrid from './components/EquipmentGrid';
 import { getIconPath, getIconColor } from './lib/itemUtils';
+import { deriveRarityLabel, getEquipmentTypeName, getEquipmentName } from "./lib/equipmentUtils";
 
 type FieldKey = keyof PlayerCore;
 type TabKey = "edit" | "items" | "hunterEquip" | "palicoEquip" | "progress";
@@ -154,6 +160,7 @@ function App() {
   const [form, setForm] = useState<PlayerCore | null>(null);
   const [items, setItems] = useState<ItemSlot[] | null>(null);
   const [equipment, setEquipment] = useState<EquipmentBoxes | null>(null);
+  const [hunterEquipmentEntries, setHunterEquipmentEntries] = useState<HunterEquipmentEntry[] | null>(null);
   const [palicoes, setPalicoes] = useState<PalicoData | null>(null);
   const [guildCard, setGuildCard] = useState<GuildCardData | null>(null);
   const [shoutouts, setShoutouts] = useState<ShoutoutData | null>(null);
@@ -164,6 +171,7 @@ function App() {
   const [itemIdInput, setItemIdInput] = useState<number>(0);
   const [itemCountInput, setItemCountInput] = useState<number>(0);
   const [itemSearch, setItemSearch] = useState<string>("");
+  const [equipSearch, setEquipSearch] = useState<string>("");
   const [hexBlocks, setHexBlocks] = useState<Record<HexBlockKey, string>>(emptyHexBlocks);
   const [blockErrors, setBlockErrors] = useState<Record<HexBlockKey, string | null>>(emptyBlockErrors);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -181,7 +189,23 @@ function App() {
   }, [items]);
 
   useEffect(() => {
-    if (!equipment) return;
+    if (!equipment) {
+      setHunterEquipmentEntries(null);
+      setSelectedEquipIndex(null);
+      return;
+    }
+    const entries = parseHunterEquipmentEntries(equipment.hunter);
+    setHunterEquipmentEntries(entries);
+    const firstFilled = entries.findIndex(
+      (entry) =>
+        entry.type !== 0 ||
+        entry.equipId !== 0 ||
+        entry.transmogId !== 0 ||
+        entry.deco1 !== 0 ||
+        entry.deco2 !== 0 ||
+        entry.deco3 !== 0
+    );
+    setSelectedEquipIndex(firstFilled >= 0 ? firstFilled : 0);
     setHexBlocks((prev) => ({
       ...prev,
       hunterEquip: bytesToHex(equipment.hunter),
@@ -260,6 +284,7 @@ function App() {
       setForm(null);
       setItems(null);
       setEquipment(null);
+      setHunterEquipmentEntries(null);
       setPalicoes(null);
       setGuildCard(null);
       setShoutouts(null);
@@ -270,6 +295,9 @@ function App() {
       setItemIdInput(0);
       setItemCountInput(0);
       setItemSearch("");
+      setEquipSearch("");
+      setSelectedEquipIndex(null);
+      setSelectedItemIndex(null);
       setStatus(initialMessage);
       setError((err as Error).message);
     }
@@ -332,6 +360,30 @@ function App() {
       .map((entry, index) => ({ ...entry, name: getItemName(entry.id), slot: index + 1 }))
       .filter((entry) => entry.id !== 0 && entry.count > 0);
   }, [items]);
+
+  const filteredHunterEntries = useMemo(() => {
+    if (!hunterEquipmentEntries) return [];
+    const query = equipSearch.trim().toLowerCase();
+    return hunterEquipmentEntries.filter((entry) => {
+      const typeName = getEquipmentTypeName(entry.type).toLowerCase();
+      const equipName = getEquipmentName(entry.type, entry.equipId).toLowerCase();
+      const matchesQuery =
+        !query ||
+        typeName.includes(query) ||
+        equipName.includes(query) ||
+        entry.slot.toString() === query ||
+        entry.equipId.toString().includes(query) ||
+        entry.transmogId.toString().includes(query);
+      const isEmpty =
+        entry.type === 0 &&
+        entry.equipId === 0 &&
+        entry.transmogId === 0 &&
+        entry.deco1 === 0 &&
+        entry.deco2 === 0 &&
+        entry.deco3 === 0;
+      return matchesQuery && !isEmpty;
+    });
+  }, [equipSearch, hunterEquipmentEntries]);
 
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
@@ -401,6 +453,7 @@ function App() {
     setForm(null);
     setItems(null);
     setEquipment(null);
+    setHunterEquipmentEntries(null);
     setPalicoes(null);
     setGuildCard(null);
     setShoutouts(null);
@@ -411,10 +464,13 @@ function App() {
     setItemIdInput(0);
     setItemCountInput(0);
     setItemSearch("");
+    setEquipSearch("");
     setError(null);
     setStatus(initialMessage);
     setCurrentSlot(1);
     setActiveTab("edit");
+    setSelectedEquipIndex(null);
+    setSelectedItemIndex(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -456,6 +512,61 @@ function App() {
     setItemIdInput(0);
     setItemCountInput(0);
     setItemSearch("");
+  };
+
+  const syncHunterBox = (entries: HunterEquipmentEntry[]) => {
+    const updatedBox = writeHunterEquipmentEntries(entries);
+    setEquipment((prev) => (prev ? { ...prev, hunter: updatedBox } : prev));
+    setHexBlocks((prev) => ({ ...prev, hunterEquip: bytesToHex(updatedBox) }));
+    setBlockErrors((prev) => ({ ...prev, hunterEquip: null }));
+  };
+
+  const updateHunterEntry = (
+    slotIndex: number,
+    updater: (entry: HunterEquipmentEntry) => Partial<HunterEquipmentEntry>
+  ) => {
+    setHunterEquipmentEntries((prev) => {
+      if (!prev) return prev;
+      if (slotIndex < 0 || slotIndex >= prev.length) return prev;
+      const next = [...prev];
+      next[slotIndex] = { ...next[slotIndex], ...updater(next[slotIndex]) };
+      syncHunterBox(next);
+      return next;
+    });
+  };
+
+  const clearHunterEntry = (slotIndex: number) => {
+    updateHunterEntry(slotIndex, (entry) => ({
+      type: 0,
+      levelBits: entry.levelBits,
+      equipId: 0,
+      transmogId: 0,
+      deco1: 0,
+      deco2: 0,
+      deco3: 0
+    }));
+  };
+
+  const setSelectedEquipSlot = (slotNumber: number) => {
+    if (!hunterEquipmentEntries) return;
+    const safeSlot = clamp(Math.trunc(slotNumber) || 1, 1, EQUIPMENT_SLOT_COUNT);
+    setSelectedEquipIndex(safeSlot - 1);
+  };
+
+  const updateSelectedEquipmentField = (
+    key: keyof Omit<HunterEquipmentEntry, "slot" | "raw">,
+    value: number
+  ) => {
+    if (selectedEquipIndex === null) return;
+    let capped = value;
+    if (key === "type") {
+      capped = clamp(value, 0, 21);
+    } else if (key === "levelBits") {
+      capped = clamp(value, 0, 2047);
+    } else {
+      capped = clamp(value, 0, 65535);
+    }
+    updateHunterEntry(selectedEquipIndex, () => ({ [key]: capped } as Partial<HunterEquipmentEntry>));
   };
 
   const setItemTotal = (id: number, total: number) => {
@@ -676,6 +787,11 @@ function App() {
   );
 
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
+  const [selectedEquipIndex, setSelectedEquipIndex] = useState<number | null>(null);
+  const selectedEquipEntry =
+    selectedEquipIndex !== null && hunterEquipmentEntries
+      ? hunterEquipmentEntries[selectedEquipIndex]
+      : null;
 
   const handleItemClick = (item: ItemSlot, index: number) => {
     setSelectedItemIndex(index);
@@ -874,27 +990,190 @@ function App() {
 
   const renderHunterEquipTab = () => (
     <div className="tab-panel" data-tab="hunterEquip">
-      {equipment ? (
-        <div className="subcard">
+      {equipment && hunterEquipmentEntries ? (
+        <div className="subcard stack">
           <div className="subcard-header">
             <div>
               <p className="label">Hunter equipment box</p>
-              <p className="meta">Paste an eqpboXX export or drop the raw block. Length must stay exact.</p>
+              <p className="meta">Browse and edit slots using the same parsing rules as WinForms.</p>
             </div>
             <span className="pill">{EQUIPMENT_BOX_BYTES.toLocaleString()} bytes</span>
           </div>
-          {renderHexEditor(
-            "hunterEquip",
-            "Hunter equipment box",
-            EQUIPMENT_BOX_BYTES,
-            (bytes) =>
-              setEquipment((prev) =>
-                prev
-                  ? { ...prev, hunter: bytes }
-                  : { hunter: bytes, palico: new Uint8Array(PALICO_EQUIPMENT_BYTES) }
-              ),
-            "72,000 bytes. Import an eqpboXX export or paste hex."
-          )}
+
+          <div className="inline-fields">
+            <label className="field small full">
+              <div className="field-top">
+                <span>Search slots</span>
+                <span className="meta">Slot number, type, or ID</span>
+              </div>
+              <input
+                type="text"
+                value={equipSearch}
+                onChange={(e) => setEquipSearch(e.target.value)}
+                placeholder="Head, Bow, 123..."
+              />
+            </label>
+          </div>
+
+          <EquipmentGrid
+            entries={filteredHunterEntries}
+            onSelect={(_, idx) => setSelectedEquipIndex(idx)}
+            selectedIndex={selectedEquipIndex}
+          />
+
+          <details className="manual-editor">
+            <summary>Advanced: edit a specific equipment slot</summary>
+            <div className="inline-fields wrap">
+              <label className="field small">
+                <div className="field-top">
+                  <span>Slot #</span>
+                </div>
+                <input
+                  type="number"
+                  min={1}
+                  max={EQUIPMENT_SLOT_COUNT}
+                  value={(selectedEquipIndex ?? 0) + 1}
+                  onChange={(e) => setSelectedEquipSlot(Number(e.target.value))}
+                />
+                <div className="field-helper">
+                  <span>1-{EQUIPMENT_SLOT_COUNT}</span>
+                </div>
+              </label>
+
+              <label className="field small">
+                <div className="field-top">
+                  <span>Type</span>
+                </div>
+                <select
+                  value={selectedEquipEntry?.type ?? 0}
+                  onChange={(e) => updateSelectedEquipmentField("type", Number(e.target.value))}
+                >
+                  {Array.from({ length: 22 }, (_, idx) => (
+                    <option key={idx} value={idx}>
+                      {getEquipmentTypeName(idx)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field small">
+                <div className="field-top">
+                  <span>Equip ID</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={65535}
+                  value={selectedEquipEntry?.equipId ?? 0}
+                  onChange={(e) => updateSelectedEquipmentField("equipId", Number(e.target.value))}
+                />
+              </label>
+
+              <label className="field small">
+                <div className="field-top">
+                  <span>Transmog ID</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={65535}
+                  value={selectedEquipEntry?.transmogId ?? 0}
+                  onChange={(e) => updateSelectedEquipmentField("transmogId", Number(e.target.value))}
+                />
+              </label>
+
+              <label className="field small">
+                <div className="field-top">
+                  <span>Rarity (level bits)</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={2047}
+                  value={selectedEquipEntry?.levelBits ?? 0}
+                  onChange={(e) => updateSelectedEquipmentField("levelBits", Number(e.target.value))}
+                />
+                <div className="field-helper">
+                  <span>Rare {selectedEquipEntry ? deriveRarityLabel(selectedEquipEntry.levelBits) : "1"}</span>
+                </div>
+              </label>
+
+              <label className="field small">
+                <div className="field-top">
+                  <span>Deco 1 ID</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={65535}
+                  value={selectedEquipEntry?.deco1 ?? 0}
+                  onChange={(e) => updateSelectedEquipmentField("deco1", Number(e.target.value))}
+                />
+              </label>
+              <label className="field small">
+                <div className="field-top">
+                  <span>Deco 2 ID</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={65535}
+                  value={selectedEquipEntry?.deco2 ?? 0}
+                  onChange={(e) => updateSelectedEquipmentField("deco2", Number(e.target.value))}
+                />
+              </label>
+              <label className="field small">
+                <div className="field-top">
+                  <span>Deco 3 ID</span>
+                </div>
+                <input
+                  type="number"
+                  min={0}
+                  max={65535}
+                  value={selectedEquipEntry?.deco3 ?? 0}
+                  onChange={(e) => updateSelectedEquipmentField("deco3", Number(e.target.value))}
+                />
+              </label>
+            </div>
+            <div className="actions wrap">
+              <button
+                className="primary"
+                type="button"
+                onClick={() => selectedEquipIndex !== null && clearHunterEntry(selectedEquipIndex)}
+                disabled={selectedEquipIndex === null}
+              >
+                Clear slot
+              </button>
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => {
+                  if (!equipment) return;
+                  const entries = parseHunterEquipmentEntries(equipment.hunter);
+                  setHunterEquipmentEntries(entries);
+                  setHexBlocks((prev) => ({ ...prev, hunterEquip: bytesToHex(equipment.hunter) }));
+                }}
+              >
+                Reload from save
+              </button>
+            </div>
+          </details>
+
+          <details className="manual-editor">
+            <summary>Raw hex (fallback)</summary>
+            {renderHexEditor(
+              "hunterEquip",
+              "Hunter equipment box",
+              EQUIPMENT_BOX_BYTES,
+              (bytes) =>
+                setEquipment((prev) =>
+                  prev
+                    ? { ...prev, hunter: bytes }
+                    : { hunter: bytes, palico: new Uint8Array(PALICO_EQUIPMENT_BYTES) }
+                ),
+              "72,000 bytes. Import an eqpboXX export or paste hex."
+            )}
+          </details>
         </div>
       ) : (
         <p className="hint">Load a save to edit hunter equipment.</p>

@@ -2,6 +2,8 @@ import {
   ARENA_LOG_BYTES,
   AUTOMATIC_SHOUTOUT_BYTES,
   EQUIPMENT_BOX_BYTES,
+  EQUIPMENT_SLOT_BYTES,
+  EQUIPMENT_SLOT_COUNT,
   GUILD_CARD_BYTES,
   ITEM_BOX_BYTES,
   ITEM_ID_BITS,
@@ -18,6 +20,7 @@ import {
   PlayerCore,
   ItemSlot,
   EquipmentBoxes,
+  HunterEquipmentEntry,
   PalicoData,
   GuildCardData,
   ShoutoutData,
@@ -284,6 +287,68 @@ export const parseEquipmentBoxes = (
   };
 };
 
+const decodeHunterEquipment = (box: Uint8Array): HunterEquipmentEntry[] => {
+  const entries: HunterEquipmentEntry[] = new Array(EQUIPMENT_SLOT_COUNT);
+  for (let slot = 0; slot < EQUIPMENT_SLOT_COUNT; slot++) {
+    const start = slot * EQUIPMENT_SLOT_BYTES;
+    const raw = box.slice(start, start + EQUIPMENT_SLOT_BYTES);
+    const typeLevel = raw[0] | (raw[1] << 8);
+    const type = typeLevel & 0x1f; // matches WinForms: bits 0-4 after concatenation
+    const levelBits = typeLevel >> 5; // preserve the remaining bits as-is
+    const equipId = raw[2] | (raw[3] << 8);
+    const transmogId = raw[4] | (raw[5] << 8);
+    const deco1 = raw[6] | (raw[7] << 8);
+    const deco2 = raw[8] | (raw[9] << 8);
+    const deco3 = raw[10] | (raw[11] << 8);
+
+    entries[slot] = {
+      slot: slot + 1,
+      type,
+      levelBits,
+      equipId,
+      transmogId,
+      deco1,
+      deco2,
+      deco3,
+      raw
+    };
+  }
+  return entries;
+};
+
+const encodeHunterEquipment = (entries: HunterEquipmentEntry[]): Uint8Array => {
+  if (entries.length !== EQUIPMENT_SLOT_COUNT) {
+    throw new Error(`Hunter equipment entries must be ${EQUIPMENT_SLOT_COUNT} slots.`);
+  }
+  const box = new Uint8Array(EQUIPMENT_BOX_BYTES);
+  entries.forEach((entry, index) => {
+    const start = index * EQUIPMENT_SLOT_BYTES;
+    const snapshot = new Uint8Array(entry.raw);
+
+    const typeLevel = (entry.levelBits << 5) | (entry.type & 0x1f);
+    snapshot[0] = typeLevel & 0xff;
+    snapshot[1] = (typeLevel >> 8) & 0xff;
+
+    snapshot[2] = entry.equipId & 0xff;
+    snapshot[3] = (entry.equipId >> 8) & 0xff;
+
+    snapshot[4] = entry.transmogId & 0xff;
+    snapshot[5] = (entry.transmogId >> 8) & 0xff;
+
+    snapshot[6] = entry.deco1 & 0xff;
+    snapshot[7] = (entry.deco1 >> 8) & 0xff;
+
+    snapshot[8] = entry.deco2 & 0xff;
+    snapshot[9] = (entry.deco2 >> 8) & 0xff;
+
+    snapshot[10] = entry.deco3 & 0xff;
+    snapshot[11] = (entry.deco3 >> 8) & 0xff;
+
+    box.set(snapshot, start);
+  });
+  return box;
+};
+
 export const writeEquipmentBoxes = (
   payload: Uint8Array,
   slotNumber: number,
@@ -306,6 +371,11 @@ export const writeEquipmentBoxes = (
 
   return updated;
 };
+
+export const parseHunterEquipmentEntries = (box: Uint8Array) => decodeHunterEquipment(box);
+
+export const writeHunterEquipmentEntries = (entries: HunterEquipmentEntry[]) =>
+  encodeHunterEquipment(entries);
 
 export const parsePalicoes = (
   payload: Uint8Array,

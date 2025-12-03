@@ -31,6 +31,18 @@ export type EquipmentBoxes = {
   palico: Uint8Array;
 };
 
+export type HunterEquipmentEntry = {
+  slot: number;
+  type: number;
+  levelBits: number;
+  equipId: number;
+  transmogId: number;
+  deco1: number;
+  deco2: number;
+  deco3: number;
+  raw: Uint8Array;
+};
+
 export type PalicoData = {
   raw: Uint8Array;
 };
@@ -59,6 +71,8 @@ export const ITEM_PADDING_BITS = 4;
 export const ITEM_BOX_BYTES = 5463;
 
 export const EQUIPMENT_BOX_BYTES = 72000;
+export const EQUIPMENT_SLOT_COUNT = 2000;
+export const EQUIPMENT_SLOT_BYTES = 36;
 export const PALICO_EQUIPMENT_BYTES = 36000;
 export const PALICO_BYTES = 27216;
 export const PALICO_SLOT_BYTES = 324;
