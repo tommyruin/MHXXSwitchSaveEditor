@@ -11,11 +11,15 @@ import {
   parsePlayer,
   parseShoutouts,
   parseHunterEquipmentEntries,
+  parsePalicoEquipmentEntries,
+  parsePalicoRosterEntries,
   writeEquipmentBoxes,
   writeGuildCard,
   writeItemBox,
   writeMonsterLogs,
   writeHunterEquipmentEntries,
+  writePalicoEquipmentEntries,
+  writePalicoRosterEntries,
   writePalicoes,
   writePlayer,
   writeShoutouts
@@ -24,6 +28,8 @@ import {
   EquipmentBoxes,
   GuildCardData,
   HunterEquipmentEntry,
+  PalicoEquipmentSlot,
+  PalicoRosterEntry,
   ItemSlot,
   LoadedSave,
   MonsterLogData,
@@ -40,6 +46,9 @@ import {
   MONSTER_SIZE_BYTES,
   PALICO_BYTES,
   PALICO_EQUIPMENT_BYTES,
+  PALICO_EQUIP_SLOT_COUNT,
+  PALICO_ROSTER_SLOT_COUNT,
+  PALICO_EQUIPMENT_NONE,
   ITEM_COUNT_BITS,
   ITEM_ID_BITS,
   ITEM_SLOT_COUNT,
@@ -48,10 +57,28 @@ import {
 } from "./lib/types";
 import { ITEMS } from "./lib/data/items";
 import { EQUIPMENT_CATALOG, ARMOR_PIECE_TYPES, WEAPON_TYPE_LIST } from "./lib/data/equipmentCatalog";
+import {
+  PALICO_EQUIPMENT_CATALOG,
+  PALICO_EQUIPMENT_TYPES,
+  PALICO_WEAPONS,
+  PALICO_HELMETS,
+  PALICO_BODY_ARMOR,
+  type PalicoEquipmentEntry
+} from "./lib/data/palicoEquipmentCatalog";
+import {
+  getPalicoEquipmentName,
+  getPalicoEquipmentEntry,
+  getPalicoEquipmentTypeName,
+  getPalicoEquipmentIcon,
+  getForteName,
+  getTargetName
+} from "./lib/palicoEquipmentUtils";
 import "./App.css";
 import './components/InventoryGrid.css';
 import InventoryGrid from './components/InventoryGrid';
 import EquipmentGrid from './components/EquipmentGrid';
+import PalicoEquipmentGrid from './components/PalicoEquipmentGrid';
+import PalicoRosterGrid from './components/PalicoRosterGrid';
 import { getIconPath, getIconColor } from './lib/itemUtils';
 import { deriveRarityLabel, getEquipmentTypeName, getEquipmentName, getEquipmentIcon, getRarityColor, rarityToLevelBits, getRarityColorFromNumber } from "./lib/equipmentUtils";
 
@@ -162,6 +189,8 @@ function App() {
   const [items, setItems] = useState<ItemSlot[] | null>(null);
   const [equipment, setEquipment] = useState<EquipmentBoxes | null>(null);
   const [hunterEquipmentEntries, setHunterEquipmentEntries] = useState<HunterEquipmentEntry[] | null>(null);
+  const [palicoEquipmentEntries, setPalicoEquipmentEntries] = useState<PalicoEquipmentSlot[] | null>(null);
+  const [palicoRosterEntries, setPalicoRosterEntries] = useState<PalicoRosterEntry[] | null>(null);
   const [palicoes, setPalicoes] = useState<PalicoData | null>(null);
   const [guildCard, setGuildCard] = useState<GuildCardData | null>(null);
   const [shoutouts, setShoutouts] = useState<ShoutoutData | null>(null);
@@ -176,6 +205,9 @@ function App() {
   const [equipCategoryFilter, setEquipCategoryFilter] = useState<'all' | 'weapon' | 'armor' | 'talisman'>('all');
   const [equipTypeFilter, setEquipTypeFilter] = useState<number>(0);
   const [equipRarityFilter, setEquipRarityFilter] = useState<number>(0); // 0 = all rarities
+  const [palicoEquipSearch, setPalicoEquipSearch] = useState<string>("");
+  const [palicoEquipTypeFilter, setPalicoEquipTypeFilter] = useState<number>(0); // 0 = all, 22 = weapon, 23 = helmet, 24 = body
+  const [palicoRarityFilter, setPalicoRarityFilter] = useState<number>(0);
   const [hexBlocks, setHexBlocks] = useState<Record<HexBlockKey, string>>(emptyHexBlocks);
   const [blockErrors, setBlockErrors] = useState<Record<HexBlockKey, string | null>>(emptyBlockErrors);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -195,12 +227,14 @@ function App() {
   useEffect(() => {
     if (!equipment) {
       setHunterEquipmentEntries(null);
+      setPalicoEquipmentEntries(null);
       setSelectedEquipIndex(null);
+      setSelectedPalicoEquipIndex(null);
       return;
     }
-    const entries = parseHunterEquipmentEntries(equipment.hunter);
-    setHunterEquipmentEntries(entries);
-    const firstFilled = entries.findIndex(
+    const hunterEntries = parseHunterEquipmentEntries(equipment.hunter);
+    setHunterEquipmentEntries(hunterEntries);
+    const firstFilled = hunterEntries.findIndex(
       (entry) =>
         entry.type !== 0 ||
         entry.equipId !== 0 ||
@@ -210,6 +244,10 @@ function App() {
         entry.deco3 !== 0
     );
     setSelectedEquipIndex(firstFilled >= 0 ? firstFilled : 0);
+    
+    const palicoEntries = parsePalicoEquipmentEntries(equipment.palico);
+    setPalicoEquipmentEntries(palicoEntries);
+    
     setHexBlocks((prev) => ({
       ...prev,
       hunterEquip: bytesToHex(equipment.hunter),
@@ -219,7 +257,13 @@ function App() {
   }, [equipment]);
 
   useEffect(() => {
-    if (!palicoes) return;
+    if (!palicoes) {
+      setPalicoRosterEntries(null);
+      setSelectedPalicoRosterIndex(null);
+      return;
+    }
+    const entries = parsePalicoRosterEntries(palicoes.raw);
+    setPalicoRosterEntries(entries);
     setHexBlocks((prev) => ({ ...prev, palicoes: bytesToHex(palicoes.raw) }));
     setBlockErrors((prev) => ({ ...prev, palicoes: null }));
   }, [palicoes]);
@@ -289,6 +333,8 @@ function App() {
       setItems(null);
       setEquipment(null);
       setHunterEquipmentEntries(null);
+      setPalicoEquipmentEntries(null);
+      setPalicoRosterEntries(null);
       setPalicoes(null);
       setGuildCard(null);
       setShoutouts(null);
@@ -300,8 +346,11 @@ function App() {
       setItemCountInput(0);
       setItemSearch("");
       setEquipSearch("");
+      setPalicoEquipSearch("");
       setSelectedEquipIndex(null);
       setSelectedItemIndex(null);
+      setSelectedPalicoEquipIndex(null);
+      setSelectedPalicoRosterIndex(null);
       setStatus(initialMessage);
       setError((err as Error).message);
     }
@@ -358,6 +407,16 @@ function App() {
     });
     return counts;
   }, [hunterEquipmentEntries]);
+
+  const palicoEquipmentCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    palicoEquipmentEntries?.forEach((entry) => {
+      if (entry.type === 0 && entry.equipId === 0) return;
+      const key = `${entry.type}-${entry.equipId}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    });
+    return counts;
+  }, [palicoEquipmentEntries]);
 
   const filledItems = useMemo(
     () =>
@@ -430,6 +489,31 @@ function App() {
     return results;
   }, [equipCategoryFilter, equipTypeFilter, equipRarityFilter, equipSearch]);
 
+  const filteredPalicoCatalog = useMemo(() => {
+    let results = PALICO_EQUIPMENT_CATALOG;
+
+    // Filter by type
+    if (palicoEquipTypeFilter !== 0) {
+      results = results.filter(e => e.type === palicoEquipTypeFilter);
+    }
+
+    // Filter by rarity
+    if (palicoRarityFilter !== 0) {
+      results = results.filter(e => e.rarity === palicoRarityFilter);
+    }
+
+    // Filter by search query
+    if (palicoEquipSearch.trim()) {
+      const query = palicoEquipSearch.toLowerCase();
+      results = results.filter(e =>
+        e.name.toLowerCase().includes(query) ||
+        e.id.toString() === query
+      );
+    }
+
+    return results;
+  }, [palicoEquipTypeFilter, palicoRarityFilter, palicoEquipSearch]);
+
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   useEffect(() => {
@@ -499,6 +583,8 @@ function App() {
     setItems(null);
     setEquipment(null);
     setHunterEquipmentEntries(null);
+    setPalicoEquipmentEntries(null);
+    setPalicoRosterEntries(null);
     setPalicoes(null);
     setGuildCard(null);
     setShoutouts(null);
@@ -510,12 +596,15 @@ function App() {
     setItemCountInput(0);
     setItemSearch("");
     setEquipSearch("");
+    setPalicoEquipSearch("");
     setError(null);
     setStatus(initialMessage);
     setCurrentSlot(1);
     setActiveTab("edit");
     setSelectedEquipIndex(null);
     setSelectedItemIndex(null);
+    setSelectedPalicoEquipIndex(null);
+    setSelectedPalicoRosterIndex(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -685,6 +774,95 @@ function App() {
       capped = clamp(value, 0, 65535);
     }
     updateHunterEntry(selectedEquipIndex, () => ({ [key]: capped } as Partial<HunterEquipmentEntry>));
+  };
+
+  // Palico Equipment Management Functions
+  const syncPalicoEquipmentBox = (entries: PalicoEquipmentSlot[]) => {
+    const updatedBox = writePalicoEquipmentEntries(entries);
+    setEquipment((prev) => (prev ? { ...prev, palico: updatedBox } : prev));
+    setHexBlocks((prev) => ({ ...prev, palicoEquip: bytesToHex(updatedBox) }));
+    setBlockErrors((prev) => ({ ...prev, palicoEquip: null }));
+  };
+
+  const syncPalicoRoster = (entries: PalicoRosterEntry[]) => {
+    const updatedRoster = writePalicoRosterEntries(entries);
+    setPalicoes((prev) => (prev ? { ...prev, raw: updatedRoster } : prev));
+    setHexBlocks((prev) => ({ ...prev, palicoes: bytesToHex(updatedRoster) }));
+    setBlockErrors((prev) => ({ ...prev, palicoes: null }));
+  };
+
+  const addPalicoEquipmentToBox = (catalogEntry: PalicoEquipmentEntry) => {
+    setPalicoEquipmentEntries((prev) => {
+      if (!prev) return prev;
+      const emptyIndex = prev.findIndex(e => e.type === 0 && e.equipId === 0);
+      if (emptyIndex === -1) {
+        setError('Palico equipment box is full. Remove an item first.');
+        return prev;
+      }
+
+      const next = [...prev];
+      const levelBits = rarityToLevelBits(catalogEntry.rarity);
+      next[emptyIndex] = {
+        ...next[emptyIndex],
+        type: catalogEntry.type,
+        equipId: catalogEntry.id,
+        levelBits
+      };
+
+      syncPalicoEquipmentBox(next);
+      setSelectedPalicoEquipIndex(emptyIndex);
+      setError(null);
+      return next;
+    });
+  };
+
+  const removePalicoEquipmentFromBox = (type: number, equipId: number) => {
+    setPalicoEquipmentEntries((prev) => {
+      if (!prev) return prev;
+      const matchIndex = prev.findIndex(e => e.type === type && e.equipId === equipId);
+      if (matchIndex === -1) return prev;
+
+      const next = [...prev];
+      next[matchIndex] = {
+        ...next[matchIndex],
+        type: 0,
+        equipId: 0,
+        levelBits: 0
+      };
+
+      syncPalicoEquipmentBox(next);
+      setError(null);
+      return next;
+    });
+  };
+
+  const updatePalicoRosterEntry = (
+    index: number,
+    updates: Partial<Omit<PalicoRosterEntry, 'slot' | 'raw'>>
+  ) => {
+    setPalicoRosterEntries((prev) => {
+      if (!prev || index < 0 || index >= prev.length) return prev;
+      const next = [...prev];
+      next[index] = { ...next[index], ...updates };
+      syncPalicoRoster(next);
+      return next;
+    });
+  };
+
+  const assignEquipmentToPalico = (
+    palicoIndex: number,
+    slotType: 'weapon' | 'helmet' | 'body',
+    equipId: number
+  ) => {
+    const updates: Partial<PalicoRosterEntry> = {};
+    if (slotType === 'weapon') {
+      updates.equippedWeaponId = equipId;
+    } else if (slotType === 'helmet') {
+      updates.equippedHelmetId = equipId;
+    } else if (slotType === 'body') {
+      updates.equippedBodyId = equipId;
+    }
+    updatePalicoRosterEntry(palicoIndex, updates);
   };
 
   const setItemTotal = (id: number, total: number) => {
@@ -906,9 +1084,15 @@ function App() {
 
   const [selectedItemIndex, setSelectedItemIndex] = useState<number | null>(null);
   const [selectedEquipIndex, setSelectedEquipIndex] = useState<number | null>(null);
+  const [selectedPalicoEquipIndex, setSelectedPalicoEquipIndex] = useState<number | null>(null);
+  const [selectedPalicoRosterIndex, setSelectedPalicoRosterIndex] = useState<number | null>(null);
   const selectedEquipEntry =
     selectedEquipIndex !== null && hunterEquipmentEntries
       ? hunterEquipmentEntries[selectedEquipIndex]
+      : null;
+  const selectedPalicoRosterEntry =
+    selectedPalicoRosterIndex !== null && palicoRosterEntries
+      ? palicoRosterEntries[selectedPalicoRosterIndex]
       : null;
 
   const handleItemClick = (item: ItemSlot, index: number) => {
@@ -1467,43 +1651,310 @@ function App() {
     <div className="tab-panel" data-tab="palicoEquip">
       {equipment && palicoes ? (
         <div className="block-grid">
+          {/* Equipment Box Section */}
           <div className="subcard">
             <div className="subcard-header">
               <div>
                 <p className="label">Palico equipment box</p>
-                <p className="meta">Keep the byte count exact; drop the raw block or paste hex.</p>
+                <p className="meta">{palicoEquipmentEntries.filter(e => e.type !== 0).length} / {PALICO_EQUIP_SLOT_COUNT} slots used</p>
               </div>
               <span className="pill">{PALICO_EQUIPMENT_BYTES.toLocaleString()} bytes</span>
             </div>
-            {renderHexEditor(
-              "palicoEquip",
-              "Palico equipment box",
-              PALICO_EQUIPMENT_BYTES,
-              (bytes) =>
-                setEquipment((prev) =>
-                  prev
-                    ? { ...prev, palico: bytes }
-                    : { palico: bytes, hunter: new Uint8Array(EQUIPMENT_BOX_BYTES) }
-                ),
-              "36,000 bytes."
-            )}
+
+            {/* Equipment Catalog Browser */}
+            <div className="inline-fields wrap" style={{ marginBottom: '1rem' }}>
+              <label className="field small">
+                <div className="field-top">
+                  <span>Type filter</span>
+                </div>
+                <select
+                  value={palicoEquipTypeFilter}
+                  onChange={(e) => setPalicoEquipTypeFilter(Number(e.target.value))}
+                >
+                  <option value={0}>All types</option>
+                  <option value={22}>Weapons</option>
+                  <option value={23}>Helmets</option>
+                  <option value={24}>Body armor</option>
+                </select>
+              </label>
+
+              <label className="field small">
+                <div className="field-top">
+                  <span>Rarity filter</span>
+                </div>
+                <select
+                  value={palicoRarityFilter}
+                  onChange={(e) => setPalicoRarityFilter(Number(e.target.value))}
+                >
+                  <option value={0}>All rarities</option>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(r => (
+                    <option key={r} value={r}>Rare {r}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="field">
+                <div className="field-top">
+                  <span>Search equipment</span>
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search by name..."
+                  value={palicoEquipSearch}
+                  onChange={(e) => setPalicoEquipSearch(e.target.value)}
+                />
+              </label>
+            </div>
+
+            {/* Catalog Grid */}
+            <div style={{ marginBottom: '1rem' }}>
+              <p className="meta" style={{ marginBottom: '0.5rem' }}>
+                {filteredPalicoCatalog.length} equipment items available
+              </p>
+              <div className="inventory-grid" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                {filteredPalicoCatalog.map((equip) => {
+                  const icon = getPalicoEquipmentIcon(equip.type);
+                  const rarityColor = getRarityColorFromNumber(equip.rarity);
+                  const count = palicoEquipmentCounts[`${equip.type}-${equip.id}`] || 0;
+
+                  return (
+                    <div
+                      key={`${equip.type}-${equip.id}`}
+                      className="inventory-slot"
+                      onClick={() => addPalicoEquipmentToBox(equip)}
+                      title={`${equip.name} • ${getPalicoEquipmentTypeName(equip.type)} • Rare ${equip.rarity} • Click to add`}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div
+                        className="item-icon-container"
+                        style={rarityColor ? {
+                          '--icon-color': rarityColor,
+                          '--icon-url': `url(${icon})`
+                        } as React.CSSProperties : {}}
+                      >
+                        <img
+                          src={icon}
+                          alt={equip.name}
+                          className="item-icon"
+                        />
+                      </div>
+                      {count > 0 && <span className="item-count">{count}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Equipment Box Grid */}
+            <div>
+              <p className="meta" style={{ marginBottom: '0.5rem' }}>Your equipment box (click to remove)</p>
+              {palicoEquipmentEntries.filter(e => e.type !== 0).length > 0 ? (
+                <PalicoEquipmentGrid
+                  entries={palicoEquipmentEntries}
+                  selectedSlot={selectedPalicoEquipIndex}
+                  onSlotClick={(slot) => {
+                    setSelectedPalicoEquipIndex(slot);
+                    const entry = palicoEquipmentEntries[slot];
+                    if (confirm(`Remove ${getPalicoEquipmentName(entry.type, entry.equipId)} from box?`)) {
+                      removePalicoEquipmentFromBox(entry.type, entry.equipId);
+                    }
+                  }}
+                />
+              ) : (
+                <p className="hint">No equipment in box. Add equipment from the catalog above.</p>
+              )}
+            </div>
           </div>
+
+          {/* Palico Roster Section */}
           <div className="subcard">
             <div className="subcard-header">
               <div>
-                <p className="label">Palicoes</p>
-                <p className="meta">{palicoCount} populated slots. Block size {PALICO_BYTES} bytes.</p>
+                <p className="label">Palico roster</p>
+                <p className="meta">{palicoCount} / {PALICO_ROSTER_SLOT_COUNT} palicoes recruited</p>
               </div>
-              <span className="pill">Roster hex</span>
+              <span className="pill">{PALICO_BYTES.toLocaleString()} bytes</span>
             </div>
-            {renderHexEditor(
-              "palicoes",
-              "Palicoes",
-              PALICO_BYTES,
-              (bytes) => setPalicoes((prev) => (prev ? { ...prev, raw: bytes } : { raw: bytes })),
-              `${PALICO_BYTES} bytes.`
+
+            {/* Roster Grid */}
+            {palicoRosterEntries.filter(p => p.name.length > 0).length > 0 ? (
+              <div style={{ marginBottom: '1rem' }}>
+                <PalicoRosterGrid
+                  entries={palicoRosterEntries}
+                  selectedIndex={selectedPalicoRosterIndex}
+                  onPalicoClick={setSelectedPalicoRosterIndex}
+                />
+              </div>
+            ) : (
+              <p className="hint">No palicoes in roster.</p>
+            )}
+
+            {/* Palico Editor */}
+            {selectedPalicoRosterIndex !== null && palicoRosterEntries[selectedPalicoRosterIndex]?.name && (
+              <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid var(--border)', borderRadius: '4px' }}>
+                <p className="label" style={{ marginBottom: '1rem' }}>
+                  Editing: {palicoRosterEntries[selectedPalicoRosterIndex].name}
+                </p>
+
+                <div className="inline-fields wrap">
+                  <label className="field">
+                    <div className="field-top">
+                      <span>Name</span>
+                    </div>
+                    <input
+                      type="text"
+                      maxLength={31}
+                      value={palicoRosterEntries[selectedPalicoRosterIndex].name}
+                      onChange={(e) => updatePalicoRosterEntry(selectedPalicoRosterIndex, { name: e.target.value })}
+                    />
+                  </label>
+
+                  <label className="field small">
+                    <div className="field-top">
+                      <span>Level</span>
+                    </div>
+                    <input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={palicoRosterEntries[selectedPalicoRosterIndex].level}
+                      onChange={(e) => updatePalicoRosterEntry(selectedPalicoRosterIndex, { level: Number(e.target.value) })}
+                    />
+                  </label>
+
+                  <label className="field small">
+                    <div className="field-top">
+                      <span>EXP</span>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={999999}
+                      value={palicoRosterEntries[selectedPalicoRosterIndex].exp}
+                      onChange={(e) => updatePalicoRosterEntry(selectedPalicoRosterIndex, { exp: Number(e.target.value) })}
+                    />
+                  </label>
+
+                  <label className="field small">
+                    <div className="field-top">
+                      <span>Forte</span>
+                    </div>
+                    <select
+                      value={palicoRosterEntries[selectedPalicoRosterIndex].forte}
+                      onChange={(e) => updatePalicoRosterEntry(selectedPalicoRosterIndex, { forte: Number(e.target.value) })}
+                    >
+                      {[0, 1, 2, 3, 4, 5, 6, 7].map(f => (
+                        <option key={f} value={f}>{getForteName(f)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="inline-fields wrap" style={{ marginTop: '1rem' }}>
+                  <label className="field">
+                    <div className="field-top">
+                      <span>Weapon</span>
+                    </div>
+                    <select
+                      value={palicoRosterEntries[selectedPalicoRosterIndex].equippedWeaponId}
+                      onChange={(e) => assignEquipmentToPalico(selectedPalicoRosterIndex, 'weapon', Number(e.target.value))}
+                    >
+                      <option value={0xFFFF}>None</option>
+                      {palicoEquipmentEntries
+                        .filter(e => e.type === 22 && e.equipId > 0)
+                        .map(e => (
+                          <option key={e.slot} value={e.equipId}>
+                            {getPalicoEquipmentName(e.type, e.equipId)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <div className="field-top">
+                      <span>Helmet</span>
+                    </div>
+                    <select
+                      value={palicoRosterEntries[selectedPalicoRosterIndex].equippedHelmetId}
+                      onChange={(e) => assignEquipmentToPalico(selectedPalicoRosterIndex, 'helmet', Number(e.target.value))}
+                    >
+                      <option value={0xFFFF}>None</option>
+                      {palicoEquipmentEntries
+                        .filter(e => e.type === 23 && e.equipId > 0)
+                        .map(e => (
+                          <option key={e.slot} value={e.equipId}>
+                            {getPalicoEquipmentName(e.type, e.equipId)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <div className="field-top">
+                      <span>Body armor</span>
+                    </div>
+                    <select
+                      value={palicoRosterEntries[selectedPalicoRosterIndex].equippedBodyId}
+                      onChange={(e) => assignEquipmentToPalico(selectedPalicoRosterIndex, 'body', Number(e.target.value))}
+                    >
+                      <option value={0xFFFF}>None</option>
+                      {palicoEquipmentEntries
+                        .filter(e => e.type === 24 && e.equipId > 0)
+                        .map(e => (
+                          <option key={e.slot} value={e.equipId}>
+                            {getPalicoEquipmentName(e.type, e.equipId)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
             )}
           </div>
+
+          {/* Collapsed Hex Editors */}
+          <details className="subcard" style={{ gridColumn: '1 / -1' }}>
+            <summary>Advanced: raw hex editors</summary>
+            <div className="block-grid">
+              <div>
+                <div className="subcard-header">
+                  <div>
+                    <p className="label">Palico equipment box (hex)</p>
+                    <p className="meta">Direct byte editing. Use with caution.</p>
+                  </div>
+                  <span className="pill">{PALICO_EQUIPMENT_BYTES.toLocaleString()} bytes</span>
+                </div>
+                {renderHexEditor(
+                  "palicoEquip",
+                  "Palico equipment box",
+                  PALICO_EQUIPMENT_BYTES,
+                  (bytes) =>
+                    setEquipment((prev) =>
+                      prev
+                        ? { ...prev, palico: bytes }
+                        : { palico: bytes, hunter: new Uint8Array(EQUIPMENT_BOX_BYTES) }
+                    ),
+                  "36,000 bytes."
+                )}
+              </div>
+              <div>
+                <div className="subcard-header">
+                  <div>
+                    <p className="label">Palicoes roster (hex)</p>
+                    <p className="meta">Direct byte editing. Use with caution.</p>
+                  </div>
+                  <span className="pill">{PALICO_BYTES.toLocaleString()} bytes</span>
+                </div>
+                {renderHexEditor(
+                  "palicoes",
+                  "Palicoes",
+                  PALICO_BYTES,
+                  (bytes) => setPalicoes((prev) => (prev ? { ...prev, raw: bytes } : { raw: bytes })),
+                  `${PALICO_BYTES} bytes.`
+                )}
+              </div>
+            </div>
+          </details>
         </div>
       ) : (
         <p className="hint">Load a save to edit palico gear and roster.</p>

@@ -17,10 +17,16 @@ import {
   MONSTER_SIZE_BYTES,
   PALICO_BYTES,
   PALICO_EQUIPMENT_BYTES,
+  PALICO_EQUIP_SLOT_COUNT,
+  PALICO_EQUIP_SLOT_BYTES,
+  PALICO_ROSTER_SLOT_COUNT,
+  PALICO_SLOT_BYTES,
   PlayerCore,
   ItemSlot,
   EquipmentBoxes,
   HunterEquipmentEntry,
+  PalicoEquipmentSlot,
+  PalicoRosterEntry,
   PalicoData,
   GuildCardData,
   ShoutoutData,
@@ -376,6 +382,130 @@ export const parseHunterEquipmentEntries = (box: Uint8Array) => decodeHunterEqui
 
 export const writeHunterEquipmentEntries = (entries: HunterEquipmentEntry[]) =>
   encodeHunterEquipment(entries);
+
+const decodePalicoEquipment = (box: Uint8Array): PalicoEquipmentSlot[] => {
+  const entries: PalicoEquipmentSlot[] = new Array(PALICO_EQUIP_SLOT_COUNT);
+  for (let slot = 0; slot < PALICO_EQUIP_SLOT_COUNT; slot++) {
+    const start = slot * PALICO_EQUIP_SLOT_BYTES;
+    const raw = box.slice(start, start + PALICO_EQUIP_SLOT_BYTES);
+    const typeLevel = raw[0] | (raw[1] << 8);
+    const type = typeLevel & 0x1f; // Bits 0-4
+    const levelBits = typeLevel >> 5; // Remaining bits
+    const equipId = raw[2] | (raw[3] << 8);
+
+    entries[slot] = {
+      slot: slot + 1,
+      type,
+      levelBits,
+      equipId,
+      raw
+    };
+  }
+  return entries;
+};
+
+const encodePalicoEquipment = (entries: PalicoEquipmentSlot[]): Uint8Array => {
+  if (entries.length !== PALICO_EQUIP_SLOT_COUNT) {
+    throw new Error(`Palico equipment entries must be ${PALICO_EQUIP_SLOT_COUNT} slots.`);
+  }
+  const box = new Uint8Array(PALICO_EQUIPMENT_BYTES);
+  entries.forEach((entry, index) => {
+    const start = index * PALICO_EQUIP_SLOT_BYTES;
+    const snapshot = new Uint8Array(entry.raw);
+
+    const typeLevel = (entry.levelBits << 5) | (entry.type & 0x1f);
+    snapshot[0] = typeLevel & 0xff;
+    snapshot[1] = (typeLevel >> 8) & 0xff;
+
+    snapshot[2] = entry.equipId & 0xff;
+    snapshot[3] = (entry.equipId >> 8) & 0xff;
+
+    box.set(snapshot, start);
+  });
+  return box;
+};
+
+export const parsePalicoEquipmentEntries = (box: Uint8Array) => decodePalicoEquipment(box);
+
+export const writePalicoEquipmentEntries = (entries: PalicoEquipmentSlot[]) =>
+  encodePalicoEquipment(entries);
+
+const decodePalicoRoster = (raw: Uint8Array): PalicoRosterEntry[] => {
+  const entries: PalicoRosterEntry[] = new Array(PALICO_ROSTER_SLOT_COUNT);
+
+  for (let i = 0; i < PALICO_ROSTER_SLOT_COUNT; i++) {
+    const start = i * PALICO_SLOT_BYTES;
+    const slotData = raw.slice(start, start + PALICO_SLOT_BYTES);
+
+    const nameBytes = slotData.slice(0, 32);
+    const name = decoder.decode(nameBytes).replace(/\0+$/, '');
+
+    const view = new DataView(slotData.buffer, slotData.byteOffset, slotData.byteLength);
+    const exp = view.getUint32(0x20, true);
+    const level = slotData[0x24] + 1; // Display as +1
+    const forte = slotData[0x25];
+    const enthusiasm = slotData[0x26];
+    const targetPreference = slotData[0x27];
+
+    const equippedWeaponId = view.getUint16(0x100, true);
+    const equippedHelmetId = view.getUint16(0x102, true);
+    const equippedBodyId = view.getUint16(0x104, true);
+
+    entries[i] = {
+      slot: i + 1,
+      name,
+      exp,
+      level,
+      forte,
+      enthusiasm,
+      targetPreference,
+      equippedWeaponId,
+      equippedHelmetId,
+      equippedBodyId,
+      raw: slotData
+    };
+  }
+  return entries;
+};
+
+const encodePalicoRoster = (entries: PalicoRosterEntry[]): Uint8Array => {
+  if (entries.length !== PALICO_ROSTER_SLOT_COUNT) {
+    throw new Error(`Palico roster entries must be ${PALICO_ROSTER_SLOT_COUNT} slots.`);
+  }
+  const raw = new Uint8Array(PALICO_BYTES);
+
+  entries.forEach((entry, index) => {
+    const start = index * PALICO_SLOT_BYTES;
+    const snapshot = new Uint8Array(entry.raw);
+
+    // Update name
+    const nameBytes = encoder.encode(entry.name);
+    const nameBuf = new Uint8Array(32);
+    nameBuf.set(nameBytes.slice(0, 32));
+    snapshot.set(nameBuf, 0);
+
+    // Update stats
+    const view = new DataView(snapshot.buffer, snapshot.byteOffset, snapshot.byteLength);
+    view.setUint32(0x20, entry.exp, true);
+    snapshot[0x24] = entry.level - 1; // Store as -1
+    snapshot[0x25] = entry.forte;
+    snapshot[0x26] = entry.enthusiasm;
+    snapshot[0x27] = entry.targetPreference;
+
+    // Update equipped gear
+    view.setUint16(0x100, entry.equippedWeaponId, true);
+    view.setUint16(0x102, entry.equippedHelmetId, true);
+    view.setUint16(0x104, entry.equippedBodyId, true);
+
+    raw.set(snapshot, start);
+  });
+  return raw;
+};
+
+export const parsePalicoRosterEntries = (raw: Uint8Array) => decodePalicoRoster(raw);
+
+export const writePalicoRosterEntries = (entries: PalicoRosterEntry[]) =>
+  encodePalicoRoster(entries);
 
 export const parsePalicoes = (
   payload: Uint8Array,

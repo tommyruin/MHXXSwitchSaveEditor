@@ -43,6 +43,28 @@ export type HunterEquipmentEntry = {
   raw: Uint8Array;
 };
 
+export type PalicoEquipmentSlot = {
+  slot: number;      // 1-1000
+  type: number;      // 0=none, 22=weapon, 23=helmet, 24=body
+  levelBits: number; // Rarity encoding (same as hunter equip)
+  equipId: number;   // 1-indexed save file ID
+  raw: Uint8Array;   // 36-byte raw data
+};
+
+export type PalicoRosterEntry = {
+  slot: number;              // 1-84
+  name: string;              // Palico name
+  exp: number;               // Experience points
+  level: number;             // Displayed level
+  forte: number;             // 0-7 (Charisma, Fighting, etc.)
+  enthusiasm: number;        // Stat
+  targetPreference: number;  // 0-5
+  equippedWeaponId: number;  // Save file ID (0xFFFF = none)
+  equippedHelmetId: number;  // Save file ID (0xFFFF = none)
+  equippedBodyId: number;    // Save file ID (0xFFFF = none)
+  raw: Uint8Array;           // 324-byte raw data
+};
+
 export type PalicoData = {
   raw: Uint8Array;
 };
@@ -74,8 +96,12 @@ export const EQUIPMENT_BOX_BYTES = 72000;
 export const EQUIPMENT_SLOT_COUNT = 2000;
 export const EQUIPMENT_SLOT_BYTES = 36;
 export const PALICO_EQUIPMENT_BYTES = 36000;
+export const PALICO_EQUIP_SLOT_COUNT = 1000;
+export const PALICO_EQUIP_SLOT_BYTES = 36;
 export const PALICO_BYTES = 27216;
 export const PALICO_SLOT_BYTES = 324;
+export const PALICO_ROSTER_SLOT_COUNT = 84;
+export const PALICO_EQUIPMENT_NONE = 0xFFFF;
 export const GUILD_CARD_BYTES = 4986;
 export const ARENA_LOG_BYTES = 342;
 export const MANUAL_SHOUTOUT_BYTES = 2880;
