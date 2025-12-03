@@ -7,6 +7,7 @@ import {
   isPalicoRosterEntryEmpty,
   PALICO_EQUIPMENT_TYPES
 } from '../lib/palicoEquipmentUtils';
+import './PalicoRosterGrid.css';
 
 interface PalicoRosterGridProps {
   entries: PalicoRosterEntry[];
@@ -27,7 +28,7 @@ const PalicoRosterGrid: React.FC<PalicoRosterGridProps> = ({
   }
 
   return (
-    <div className="equipment-grid">
+    <div className="palico-roster-grid">
       {filled.map((entry) => {
         const isSelected = selectedIndex === entry.slot - 1;
         const weaponName = getPalicoEquipmentName(
@@ -51,31 +52,29 @@ const PalicoRosterGrid: React.FC<PalicoRosterGridProps> = ({
           <button
             key={entry.slot}
             type="button"
-            className={`equipment-card ${isSelected ? 'selected' : ''}`}
+            className={`palico-card ${isSelected ? 'selected' : ''}`}
             onClick={() => onSelect(entry, entry.slot - 1)}
           >
-            <div className="equipment-card__top">
+            <div className="palico-card__top">
               <span className="pill small">Slot {entry.slot}</span>
               <span className="pill small">{getForteName(entry.forte)}</span>
             </div>
-            <div className="equipment-card__body">
-              <div style={{ flex: 1 }}>
-                <p className="label">{entry.name}</p>
-                <p className="meta">Level {entry.level}</p>
-              </div>
+            <div className="palico-card__body">
+              <p className="label">{entry.name}</p>
+              <p className="meta">Level {entry.level}</p>
             </div>
-            <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <img src={weaponIcon} alt="Weapon" style={{ width: '16px', height: '16px' }} />
-                <p className="meta" style={{ margin: 0 }}>{weaponName}</p>
+            <div className="palico-card__equipment">
+              <div className="palico-equipment-item">
+                <img src={weaponIcon} alt="Weapon" />
+                <p className="meta">{weaponName}</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <img src={helmetIcon} alt="Helmet" style={{ width: '16px', height: '16px' }} />
-                <p className="meta" style={{ margin: 0 }}>{helmetName}</p>
+              <div className="palico-equipment-item">
+                <img src={helmetIcon} alt="Helmet" />
+                <p className="meta">{helmetName}</p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <img src={bodyIcon} alt="Armor" style={{ width: '16px', height: '16px' }} />
-                <p className="meta" style={{ margin: 0 }}>{bodyName}</p>
+              <div className="palico-equipment-item">
+                <img src={bodyIcon} alt="Armor" />
+                <p className="meta">{bodyName}</p>
               </div>
             </div>
           </button>
