@@ -455,6 +455,25 @@
   padding-right: 0;
 }
 
+/* Palico equipment tab - viewport-based scrolling */
+.tab-panel[data-tab="palicoEquip"] .item-lists .item-list {
+  max-height: none;
+  height: 100%;
+}
+
+.tab-panel[data-tab="palicoEquip"] .item-lists .item-list .list-body {
+  min-height: 50vh;
+  max-height: 50vh;
+  overflow-y: auto;
+  flex: 1;
+}
+
+/* Palico roster - full width section with flexible height */
+.tab-panel[data-tab="palicoEquip"] > .subcard > .item-form > .item-list .list-body {
+  min-height: auto;
+  max-height: 40vh;
+}
+
 .equipment-slot-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));

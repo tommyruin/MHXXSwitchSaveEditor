@@ -842,8 +842,28 @@ function App() {
   ) => {
     setPalicoRosterEntries((prev) => {
       if (!prev || index < 0 || index >= prev.length) return prev;
+      
+      // Validate and clamp values to prevent overflow
+      const validatedUpdates = { ...updates };
+      if (validatedUpdates.level !== undefined) {
+        validatedUpdates.level = clamp(Math.trunc(validatedUpdates.level) || 1, 1, 99);
+      }
+      if (validatedUpdates.exp !== undefined) {
+        // Uint32 max is 4,294,967,295, but practical max is lower
+        validatedUpdates.exp = clamp(Math.trunc(validatedUpdates.exp) || 0, 0, 4294967295);
+      }
+      if (validatedUpdates.forte !== undefined) {
+        validatedUpdates.forte = clamp(Math.trunc(validatedUpdates.forte) || 0, 0, 7);
+      }
+      if (validatedUpdates.enthusiasm !== undefined) {
+        validatedUpdates.enthusiasm = clamp(Math.trunc(validatedUpdates.enthusiasm) || 0, 0, 255);
+      }
+      if (validatedUpdates.targetPreference !== undefined) {
+        validatedUpdates.targetPreference = clamp(Math.trunc(validatedUpdates.targetPreference) || 0, 0, 5);
+      }
+      
       const next = [...prev];
-      next[index] = { ...next[index], ...updates };
+      next[index] = { ...next[index], ...validatedUpdates };
       syncPalicoRoster(next);
       return next;
     });
@@ -1769,56 +1789,53 @@ function App() {
                 </div>
               </div>
 
-              {/* RIGHT SIDE - Equipment Box + Palico Roster as Separate Sections */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {/* Equipment Box Section */}
-                <div className="item-list">
-                  <div className="list-head">
-                    <div>
-                      <p className="label">Current equipment box</p>
-                      <p className="meta">Equipment you currently own.</p>
-                    </div>
-                    <span className="pill">{palicoEquipmentEntries?.filter(e => e.type !== 0).length ?? 0} pieces</span>
+              {/* RIGHT SIDE - Equipment Box Only */}
+              <div className="item-list">
+                <div className="list-head">
+                  <div>
+                    <p className="label">Current equipment box</p>
+                    <p className="meta">Equipment you currently own.</p>
                   </div>
-                  <div className="list-body">
-                    {palicoEquipmentEntries && palicoEquipmentEntries.filter(e => e.type !== 0).length > 0 ? (
-                      <PalicoEquipmentGrid
-                        entries={palicoEquipmentEntries}
-                        onSelect={(entry, index) => {
-                          setSelectedPalicoEquipIndex(index);
-                          if (confirm(`Remove ${getPalicoEquipmentName(entry.type, entry.equipId)} from box?`)) {
-                            removePalicoEquipmentFromBox(entry.type, entry.equipId);
-                          }
-                        }}
-                        selectedIndex={selectedPalicoEquipIndex}
-                      />
-                    ) : (
-                      <p className="hint">No equipment in box. Add items from the catalog on the left.</p>
-                    )}
-                  </div>
+                  <span className="pill">{palicoEquipmentEntries?.filter(e => e.type !== 0).length ?? 0} pieces</span>
                 </div>
+                <div className="list-body">
+                  {palicoEquipmentEntries && palicoEquipmentEntries.filter(e => e.type !== 0).length > 0 ? (
+                    <PalicoEquipmentGrid
+                      entries={palicoEquipmentEntries}
+                      onSelect={(entry, index) => {
+                        setSelectedPalicoEquipIndex(index);
+                        if (confirm(`Remove ${getPalicoEquipmentName(entry.type, entry.equipId)} from box?`)) {
+                          removePalicoEquipmentFromBox(entry.type, entry.equipId);
+                        }
+                      }}
+                      selectedIndex={selectedPalicoEquipIndex}
+                    />
+                  ) : (
+                    <p className="hint">No equipment in box. Add items from the catalog on the left.</p>
+                  )}
+                </div>
+              </div>
+            </div>
 
-                {/* Palico Roster Section */}
-                <div className="item-list">
-                  <div className="list-head">
-                    <div>
-                      <p className="label">Palico roster</p>
-                      <p className="meta">{palicoCount} recruited palicoes.</p>
-                    </div>
-                    <span className="pill">{palicoCount} pals</span>
-                  </div>
-                  <div className="list-body">
-                    {palicoRosterEntries && palicoRosterEntries.filter(p => p.name.length > 0).length > 0 ? (
-                      <PalicoRosterGrid
-                        entries={palicoRosterEntries}
-                        selectedIndex={selectedPalicoRosterIndex}
-                        onSelect={(entry, index) => setSelectedPalicoRosterIndex(index)}
-                      />
-                    ) : (
-                      <p className="hint">No palicoes in roster.</p>
-                    )}
-                  </div>
+            {/* Palico Roster Section - Full Width Below */}
+            <div className="item-list" style={{ marginTop: '10px' }}>
+              <div className="list-head">
+                <div>
+                  <p className="label">Palico roster</p>
+                  <p className="meta">{palicoCount} recruited palicoes.</p>
                 </div>
+                <span className="pill">{palicoCount} pals</span>
+              </div>
+              <div className="list-body">
+                {palicoRosterEntries && palicoRosterEntries.filter(p => p.name.length > 0).length > 0 ? (
+                  <PalicoRosterGrid
+                    entries={palicoRosterEntries}
+                    selectedIndex={selectedPalicoRosterIndex}
+                    onSelect={(entry, index) => setSelectedPalicoRosterIndex(index)}
+                  />
+                ) : (
+                  <p className="hint">No palicoes in roster.</p>
+                )}
               </div>
             </div>
 
