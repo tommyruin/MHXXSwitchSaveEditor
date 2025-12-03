@@ -26,7 +26,7 @@ const InventoryGrid: React.FC<InventoryGridProps> = ({ items, onItemClick, selec
                         key={(item as any).slot || `${index}-${item.id}`}
                         className={`inventory-slot ${isSelected ? 'selected' : ''}`}
                         onClick={() => onItemClick(item, index)}
-                        title={ITEM_NAMES[item.id] || `Item ${item.id}`}
+                        title={`${ITEM_NAMES[item.id] || `Item ${item.id}`} (x${item.count})`}
                     >
                         {iconPath ? (
                             <div

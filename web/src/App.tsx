@@ -679,6 +679,12 @@ function App() {
 
   const handleItemClick = (item: ItemSlot, index: number) => {
     setSelectedItemIndex(index);
+
+    // Scroll to the item in the catalog
+    const element = itemRefs.current.get(item.id);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
   };
 
   const renderItemsTab = () => (
