@@ -8,3 +8,6 @@
 /MHXXSaveEditor/bin/Release
 /Saves
 /web/node_modules
+/Game
+/tools
+/.ghidra_home
