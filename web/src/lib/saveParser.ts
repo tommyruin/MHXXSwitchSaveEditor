@@ -45,7 +45,7 @@ import {
   ARENA_WEAPONS,
   ARENA_PALICO
 } from "./gameConstants";
-import { QUEST_CATALOG, getQuestByFlagIndex } from "./data/questCatalog";
+import { QUEST_CATALOG, getQuestByFlagIndex, getQuestByDbId } from "./data/questCatalog";
 
 const BASE_SAVE_SIZE = 4726152;
 const SWITCH_HEADER_SIZE = 36;
@@ -1059,7 +1059,10 @@ const decodeQuestFlagsFromQuestLog = (payload: Uint8Array): QuestFlagEntry[] => 
   // Quest completion is derived from the quest history log region
   // (0x250060–0x260000, 0xA0-byte records) rather than from any
   // flagIndex-based bitfield. Each record contains a 16-bit id at
-  // +0x77, which aligns with dbId in our quest catalog.
+  // +0x77 and a UTF-16LE name at +0x79. We only treat a record as a
+  // quest clear if BOTH the id matches a known dbId and the decoded
+  // name looks like that quest's title (to avoid false positives from
+  // unrelated log entries that reuse numeric ids).
   const clearedDbIds = new Set<number>();
 
   // Quest log offsets are absolute within the full system file.
@@ -1071,6 +1074,7 @@ const decodeQuestFlagsFromQuestLog = (payload: Uint8Array): QuestFlagEntry[] => 
   const QUEST_LOG_END_ABS = 0x260000;
   const RECORD_SIZE = 0xA0;
   const ID_OFFSET = 0x77;
+  const NAME_OFFSET = 0x79;
 
   const length = payload.length;
   const hasMhguExtra = length > BASE_SAVE_SIZE;
@@ -1078,6 +1082,23 @@ const decodeQuestFlagsFromQuestLog = (payload: Uint8Array): QuestFlagEntry[] => 
 
   const questLogStart = Math.max(0, QUEST_LOG_START_ABS - headerAdjust);
   const questLogEnd = Math.min(length, QUEST_LOG_END_ABS - headerAdjust);
+
+  const decodeUtf16LeNullTerminated = (
+    buf: Uint8Array,
+    offset: number,
+    maxBytes: number
+  ): string => {
+    const end = Math.min(buf.length, offset + maxBytes);
+    const codeUnits: number[] = [];
+    for (let i = offset; i + 1 < end; i += 2) {
+      const lo = buf[i];
+      const hi = buf[i + 1];
+      const cu = lo | (hi << 8);
+      if (cu === 0) break;
+      codeUnits.push(cu);
+    }
+    return String.fromCharCode(...codeUnits);
+  };
 
   if (questLogEnd >= questLogStart + 2) {
     for (let offset = questLogStart;
@@ -1087,6 +1108,31 @@ const decodeQuestFlagsFromQuestLog = (payload: Uint8Array): QuestFlagEntry[] => 
       const idHi = payload[offset + ID_OFFSET + 1];
       const questId = idLo | (idHi << 8);
       if (questId === 0 || questId === 0xffff) continue;
+
+      const rawName = decodeUtf16LeNullTerminated(
+        payload,
+        offset + NAME_OFFSET,
+        RECORD_SIZE - NAME_OFFSET
+      );
+
+      // Normalise and filter obviously non-text names (gibberish or empty)
+      const logNameNorm = rawName.replace(/\u2026/g, "").trim().toLowerCase();
+      if (!logNameNorm || !/[a-z]/i.test(logNameNorm)) {
+        continue;
+      }
+
+      const questInfo = getQuestByDbId(questId);
+      if (!questInfo) {
+        continue;
+      }
+
+      const catalogNameNorm = questInfo.name.trim().toLowerCase();
+      // Many log entries use truncated names with an ellipsis; treat
+      // the log name as a prefix of the full quest name.
+      if (!catalogNameNorm.startsWith(logNameNorm)) {
+        continue;
+      }
+
       clearedDbIds.add(questId);
     }
   }
