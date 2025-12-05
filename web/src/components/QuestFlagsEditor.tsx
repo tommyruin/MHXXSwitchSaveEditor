@@ -224,7 +224,7 @@ export const QuestFlagsEditor: React.FC<QuestFlagsEditorProps> = ({ questFlags, 
     <div className="quest-flags-editor">
       <div className="subcard-header">
         <div>
-          <p className="label">Quest Completion Flags</p>
+          <p className="label">Quest Completion (Quest Log)</p>
           <p className="meta">
             {completedCount} / {questFlags.parsed.length} quests completed
           </p>
@@ -343,22 +343,7 @@ export const QuestFlagsEditor: React.FC<QuestFlagsEditorProps> = ({ questFlags, 
                     {hub} ({completedQuests}/{totalQuests})
                   </h3>
                 </div>
-                <div className="actions wrap" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    className="primary mini"
-                    type="button"
-                    onClick={() => setAllInHub(hub, null, true)}
-                  >
-                    Complete All
-                  </button>
-                  <button
-                    className="ghost mini"
-                    type="button"
-                    onClick={() => setAllInHub(hub, null, false)}
-                  >
-                    Clear All
-                  </button>
-                </div>
+                {/* Quest completion editing controls disabled: read-only view */}
               </div>
 
               {isHubExpanded && Object.entries(starGroups).sort(([a], [b]) => parseInt(a) - parseInt(b)).map(([stars, quests]) => {
@@ -388,22 +373,7 @@ export const QuestFlagsEditor: React.FC<QuestFlagsEditorProps> = ({ questFlags, 
                         {renderStars(parseInt(stars))} ({quests.filter(q => q.completed).length}/{quests.length})
                       </span>
                     </div>
-                    <div style={{ display: 'flex', gap: '4px' }} onClick={(e) => e.stopPropagation()}>
-                      <button
-                        className="primary mini"
-                        type="button"
-                        onClick={() => setAllInHub(hub, parseInt(stars), true)}
-                      >
-                        Complete {stars}★
-                      </button>
-                      <button
-                        className="ghost mini"
-                        type="button"
-                        onClick={() => setAllInHub(hub, parseInt(stars), false)}
-                      >
-                        Clear {stars}★
-                      </button>
-                    </div>
+                    {/* Per-star completion editing disabled: quest completion is derived from quest log and is read-only. */}
                   </div>
 
                   {isStarExpanded && <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
@@ -436,13 +406,7 @@ export const QuestFlagsEditor: React.FC<QuestFlagsEditorProps> = ({ questFlags, 
                               ID: {quest.dbId} • Flag bit: {flag.byteOffset * 8 + flag.bitOffset}
                             </p>
                           </div>
-                          <button
-                            className={flag.completed ? 'ghost mini' : 'primary mini'}
-                            type="button"
-                            onClick={() => toggleQuestFlag(flag.byteOffset, flag.bitOffset)}
-                          >
-                            {flag.completed ? 'Mark Incomplete' : 'Mark Complete'}
-                          </button>
+                          {/* Per-quest completion editing disabled; display is read-only. */}
                         </div>
                       );
                     })}
@@ -459,11 +423,11 @@ export const QuestFlagsEditor: React.FC<QuestFlagsEditorProps> = ({ questFlags, 
       <details className="manual-editor" style={{ marginTop: '16px' }}>
         <summary>Technical Info</summary>
         <div style={{ padding: '12px', fontSize: '12px', fontFamily: 'monospace' }}>
-          <p><strong>Quest Flag Region:</strong> Starting at offset 0x{(0x1B092E).toString(16).toUpperCase()}</p>
-          <p><strong>Total Bytes:</strong> {questFlags.raw.length}</p>
-          <p><strong>Total Bits:</strong> {questFlags.raw.length * 8}</p>
+          <p><strong>Quest Log Region:</strong> 0x250060–0x260000 (0xA0-byte records, absolute)</p>
+          <p><strong>Completion Source:</strong> Derived from quest history log entries (dbId at +0x77, UTF-16 name at +0x79).</p>
+          <p><strong>Legacy Flags Block:</strong> Starting at offset 0x{(0x1B092E).toString(16).toUpperCase()} ({questFlags.raw.length} bytes, {questFlags.raw.length * 8} bits)</p>
           <p><strong>Known Quests:</strong> 1355 (from mhgu.db)</p>
-          <p><strong>Note:</strong> Quest flags are stored as sequential bits, mapped to quests via the database sort_order field.</p>
+          <p><strong>Note:</strong> The legacy bitfield region is no longer used to determine completion; this view is read-only and for debugging only.</p>
         </div>
       </details>
     </div>

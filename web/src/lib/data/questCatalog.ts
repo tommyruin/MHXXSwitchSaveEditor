@@ -1,8 +1,8 @@
 // Auto-generated from mhgu.db
 // Do not edit by hand; run scripts/generateQuests.js
 //
-// Quest flag bit positions match the sort_order from the database
-// Each quest occupies exactly one bit in the save file's quest flags region
+// NOTE (Dec 2024+): Earlier versions assumed quest flag bit positions matched the database sort_order and that each quest mapped to a single bit in a dedicated quest flags region.
+// Later save analysis showed no such simple bitfield exists; `flagIndex` is now treated as a stable quest index for UI/database purposes only, not as a direct save offset.
 
 export interface QuestInfo {
   flagIndex: number;    // Bit position in save file quest flags (0-1354)

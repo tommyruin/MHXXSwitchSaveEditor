@@ -190,7 +190,7 @@ const TAB_CONFIG: Array<{ key: TabKey; label: string; helper: string }> = [
   { key: "hunterEquip", label: "Hunter equipment box", helper: "Full hunter gear hex block" },
   { key: "palicoEquip", label: "Palico equipment & pals", helper: "Palico gear and roster hex blocks" },
   { key: "progress", label: "Guild card & logs", helper: "Arena log, shoutouts, monster data" },
-  { key: "quests", label: "Quest Flags", helper: "Quest completion flags" }
+  { key: "quests", label: "Quest completion", helper: "Quest completion history (read-only, from quest log)" }
 ];
 
 function App() {
@@ -2071,7 +2071,7 @@ function App() {
           <QuestFlagsEditor questFlags={questFlags} onUpdate={setQuestFlags} />
         </div>
       ) : (
-        <p className="hint">Load a save to view and edit quest completion flags.</p>
+        <p className="hint">Load a save to view quest completion history (read-only).</p>
       )}
     </div>
   );

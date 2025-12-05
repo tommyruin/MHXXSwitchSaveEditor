@@ -45,7 +45,7 @@ import {
   ARENA_WEAPONS,
   ARENA_PALICO
 } from "./gameConstants";
-import { getQuestByFlagIndex } from "./data/questCatalog";
+import { QUEST_CATALOG, getQuestByFlagIndex } from "./data/questCatalog";
 
 const BASE_SAVE_SIZE = 4726152;
 const SWITCH_HEADER_SIZE = 36;
@@ -1022,6 +1022,9 @@ export const parseQuestFlags = (
   payload: Uint8Array,
   slotNumber: number
 ): QuestFlagData => {
+  // Preserve the legacy "quest flags" raw block for debugging/hex view,
+  // but derive completion state from the quest log region instead of
+  // this bitfield, which we now know does not track completions.
   const slot = ensureSlot(slotNumber);
   const view = new DataView(
     payload.buffer,
@@ -1031,10 +1034,10 @@ export const parseQuestFlags = (
   const base = getSlotOffset(view, slot);
 
   const raw = copyBlock(payload, base + OFFSETS.QUEST_FLAGS_OFFSET, QUEST_FLAGS_BYTES);
-  
+
   return {
     raw,
-    parsed: decodeQuestFlags(raw)
+    parsed: decodeQuestFlagsFromQuestLog(payload)
   };
 };
 
@@ -1043,75 +1046,71 @@ export const writeQuestFlags = (
   slotNumber: number,
   questFlags: QuestFlagData
 ): Uint8Array => {
-  const encoded = encodeQuestFlags(questFlags.parsed);
-  questFlags.raw = encoded;
-
-  if (questFlags.raw.length !== QUEST_FLAGS_BYTES) {
-    throw new Error(`Quest flags block must be ${QUEST_FLAGS_BYTES} bytes.`);
-  }
-
-  const slot = ensureSlot(slotNumber);
-  const updated = new Uint8Array(payload);
-  const view = new DataView(updated.buffer, updated.byteOffset, updated.byteLength);
-  const base = getSlotOffset(view, slot);
-
-  updated.set(questFlags.raw, base + OFFSETS.QUEST_FLAGS_OFFSET);
-
-  return updated;
+  // Quest completion editing is currently disabled: we do not know a
+  // safe way to write completion state back to the save without
+  // corrupting data. Keep this as a no-op so other parts of the
+  // pipeline can still call it when assembling saves.
+  void slotNumber;
+  void questFlags;
+  return payload;
 };
 
-const decodeQuestFlags = (raw: Uint8Array): QuestFlagEntry[] => {
+const decodeQuestFlagsFromQuestLog = (payload: Uint8Array): QuestFlagEntry[] => {
+  // Quest completion is derived from the quest history log region
+  // (0x250060–0x260000, 0xA0-byte records) rather than from any
+  // flagIndex-based bitfield. Each record contains a 16-bit id at
+  // +0x77, which aligns with dbId in our quest catalog.
+  const clearedDbIds = new Set<number>();
+
+  // Quest log offsets are absolute within the full system file.
+  // In this web parser we only see the payload portion (header
+  // stripped). For MHGU Switch saves (size ~5,159,100 bytes), the
+  // header is 36 bytes, so we need to subtract that when indexing
+  // into the payload. For 3DS/base saves, there is no header.
+  const QUEST_LOG_START_ABS = 0x250060;
+  const QUEST_LOG_END_ABS = 0x260000;
+  const RECORD_SIZE = 0xA0;
+  const ID_OFFSET = 0x77;
+
+  const length = payload.length;
+  const hasMhguExtra = length > BASE_SAVE_SIZE;
+  const headerAdjust = hasMhguExtra ? SWITCH_HEADER_SIZE : 0;
+
+  const questLogStart = Math.max(0, QUEST_LOG_START_ABS - headerAdjust);
+  const questLogEnd = Math.min(length, QUEST_LOG_END_ABS - headerAdjust);
+
+  if (questLogEnd >= questLogStart + 2) {
+    for (let offset = questLogStart;
+         offset + RECORD_SIZE <= questLogEnd;
+         offset += RECORD_SIZE) {
+      const idLo = payload[offset + ID_OFFSET];
+      const idHi = payload[offset + ID_OFFSET + 1];
+      const questId = idLo | (idHi << 8);
+      if (questId === 0 || questId === 0xffff) continue;
+      clearedDbIds.add(questId);
+    }
+  }
+
   const entries: QuestFlagEntry[] = [];
 
-  // Parse all bits in the quest flags buffer
-  // Each bit represents one quest, indexed by flagIndex (0-1354)
-  for (let byteIdx = 0; byteIdx < raw.length; byteIdx++) {
-    const byte = raw[byteIdx];
-    for (let bitIdx = 0; bitIdx < 8; bitIdx++) {
-      const flagIndex = byteIdx * 8 + bitIdx;
-      const completed = ((byte >> bitIdx) & 1) === 1;
-      
-      // Look up quest info from catalog
-      const questInfo = getQuestByFlagIndex(flagIndex);
-      
-      if (questInfo) {
-        entries.push({
-          questId: questInfo.dbId,
-          byteOffset: byteIdx,
-          bitOffset: bitIdx,
-          completed,
-          category: `${questInfo.hub} ${questInfo.stars}★`,
-          name: questInfo.name
-        });
-      } else {
-        // For bits beyond known quests (1355+), create placeholder entries
-        entries.push({
-          questId: flagIndex,
-          byteOffset: byteIdx,
-          bitOffset: bitIdx,
-          completed,
-          category: 'Unknown',
-          name: `Unknown Quest (bit ${flagIndex})`
-        });
-      }
-    }
+  // Build entries for all known quests using their catalog flagIndex
+  for (const questInfo of QUEST_CATALOG) {
+    const flagIndex = questInfo.flagIndex;
+    const byteOffset = Math.floor(flagIndex / 8);
+    const bitOffset = flagIndex % 8;
+    const completed = clearedDbIds.has(questInfo.dbId);
+
+    entries.push({
+      questId: questInfo.dbId,
+      byteOffset,
+      bitOffset,
+      completed,
+      category: `${questInfo.hub} ${questInfo.stars}★`,
+      name: questInfo.name
+    });
   }
 
   return entries;
-};
-
-const encodeQuestFlags = (parsed: QuestFlagEntry[]): Uint8Array => {
-  const raw = new Uint8Array(QUEST_FLAGS_BYTES);
-
-  for (const entry of parsed) {
-    if (entry.completed) {
-      raw[entry.byteOffset] |= (1 << entry.bitOffset);
-    } else {
-      raw[entry.byteOffset] &= ~(1 << entry.bitOffset);
-    }
-  }
-
-  return raw;
 };
 
 
